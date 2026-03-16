@@ -1,0 +1,110 @@
+from rest_framework import status
+from rest_framework.generics import RetrieveAPIView
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from meta_pixel.service import meta_conversions
+from products.models import Product
+
+from .models import Cart, CartItem
+from .serializers import CartAddSerializer, CartItemSerializer, CartSerializer
+
+
+def get_or_create_cart(request):
+    if request.user.is_authenticated:
+        cart, _ = Cart.objects.get_or_create(user=request.user, defaults={'session_key': ''})
+    else:
+        if not request.session.session_key:
+            request.session.create()
+        cart, _ = Cart.objects.get_or_create(
+            user=None, session_key=request.session.session_key
+        )
+    return cart
+
+
+class CartDetailView(RetrieveAPIView):
+    """Get current cart with items."""
+    permission_classes = [AllowAny]
+    serializer_class = CartSerializer
+
+    def get_object(self):
+        cart = get_or_create_cart(self.request)
+        return Cart.objects.prefetch_related(
+            'items__product', 'items__product__images'
+        ).get(pk=cart.pk)
+
+
+class CartAddView(APIView):
+    """Add or update item in cart."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        ser = CartAddSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        cart = get_or_create_cart(request)
+        product = Product.objects.get(id=ser.validated_data['product_id'])
+        quantity = ser.validated_data['quantity']
+        size = (ser.validated_data.get('size') or '').strip()
+
+        item, created = CartItem.objects.update_or_create(
+            cart=cart, product=product, size=size,
+            defaults={'quantity': quantity}
+        )
+        if not created:
+            item.quantity = quantity
+            item.save(update_fields=['quantity', 'updated_at'])
+
+        meta_conversions.track_add_to_cart(request, product, quantity)
+
+        return Response(
+            CartItemSerializer(instance=item, context={'request': request}).data,
+            status=status.HTTP_201_CREATED
+        )
+
+
+class CartUpdateView(APIView):
+    """Update quantity of a cart item."""
+    permission_classes = [AllowAny]
+
+    def patch(self, request, item_id):
+        cart = get_or_create_cart(request)
+        quantity = request.data.get('quantity')
+        if quantity is None or not isinstance(quantity, int) or quantity < 1:
+            return Response({'quantity': ['Must be a positive integer.']}, status=400)
+        item = CartItem.objects.filter(cart=cart, id=item_id).first()
+        if not item:
+            return Response({'detail': 'Not found.'}, status=404)
+        item.quantity = quantity
+        item.save(update_fields=['quantity', 'updated_at'])
+        return Response(CartItemSerializer(instance=item, context={'request': request}).data)
+
+
+class CartRemoveView(APIView):
+    """Remove item from cart."""
+    permission_classes = [AllowAny]
+
+    def post(self, request, item_id):
+        cart = get_or_create_cart(request)
+        deleted, _ = CartItem.objects.filter(cart=cart, id=item_id).delete()
+        return Response({'status': 'removed', 'deleted': deleted > 0})
+
+
+class CartRemoveByProductView(APIView):
+    """Remove a cart item by product UUID (used by frontend sync)."""
+    permission_classes = [AllowAny]
+
+    def post(self, request, product_id):
+        cart = get_or_create_cart(request)
+        deleted, _ = CartItem.objects.filter(cart=cart, product_id=product_id).delete()
+        return Response({'status': 'removed', 'deleted': deleted > 0})
+
+
+class CartClearView(APIView):
+    """Remove all items from the current cart."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        cart = get_or_create_cart(request)
+        deleted, _ = cart.items.all().delete()
+        return Response({'status': 'cleared', 'deleted': deleted})

@@ -1,0 +1,54 @@
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+db_local.sqlite3
+media_local/
+static/
+*.log
+.env
+.env.local
+*.env.*
+*.bak
+*.swp
+*.swo
+.DS_Store
+*.coverage
+.pytest_cache/
+*.pid
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+
+# Django
+*.log
+local_settings.py
+settings_local.py
+db.sqlite3
+media/
+staticfiles/
+
+# Local development
+config/settings_local.py
+db_local.sqlite3
+media_local/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.local
+
+# Others
+db.sh
+run_local.sh
