@@ -32,7 +32,9 @@ def resolve_store_from_host(request: HttpRequest) -> Optional[Store]:
     if host in platform_hosts:
         return None
     try:
-        return Store.objects.get(domain__iexact=host, is_active=True)
+        return Store.objects.exclude(domain__isnull=True).get(
+            domain__iexact=host, is_active=True
+        )
     except Store.DoesNotExist:
         return None
 

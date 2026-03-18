@@ -17,6 +17,8 @@ class TenancyTests(TestCase):
         self.store = Store.objects.create(
             name="Test Store",
             domain="teststore.local",
+            owner_name="Test Owner",
+            owner_email="owner@example.com",
         )
         self.user = User.objects.create_user(
             username="owner",
@@ -55,6 +57,8 @@ class AuthStoreEndpointsTests(TestCase):
         self.store = Store.objects.create(
             name="Test Store",
             domain="teststore.local",
+            owner_name="Test Owner",
+            owner_email="owner@example.com",
         )
         self.user = User.objects.create_user(
             username="owner",
@@ -95,7 +99,12 @@ class AuthStoreEndpointsTests(TestCase):
 class SupportTicketTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.store = Store.objects.create(name="Tenant Store", domain="tenant.local")
+        self.store = Store.objects.create(
+            name="Tenant Store",
+            domain="tenant.local",
+            owner_name="Tenant Owner",
+            owner_email="owner2@example.com",
+        )
 
         self.owner = User.objects.create_user(
             username="owner2",
@@ -140,8 +149,18 @@ class SupportTicketTests(TestCase):
 class ProductTenancyTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.store_a = Store.objects.create(name="Store A", domain="a.local")
-        self.store_b = Store.objects.create(name="Store B", domain="b.local")
+        self.store_a = Store.objects.create(
+            name="Store A",
+            domain="a.local",
+            owner_name="Owner A",
+            owner_email="owner@a.local",
+        )
+        self.store_b = Store.objects.create(
+            name="Store B",
+            domain="b.local",
+            owner_name="Owner B",
+            owner_email="owner@b.local",
+        )
 
         self.nav_a = NavbarCategory.objects.create(store=self.store_a, name="Gadgets A", slug="gadgets")
         self.nav_b = NavbarCategory.objects.create(store=self.store_b, name="Gadgets B", slug="gadgets")

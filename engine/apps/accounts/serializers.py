@@ -1,9 +1,59 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from engine.apps.stores.models import StoreMembership
 
 User = get_user_model()
+
+
+class RegisterSerializer(serializers.Serializer):
+    """Serializer for user registration. Creates regular users (not staff/superuser)."""
+
+    email = serializers.EmailField(required=True, write_only=True)
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        min_length=8,
+        style={"input_type": "password"},
+    )
+    password_confirm = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+    )
+
+    def validate_email(self, value):
+        value = (value or "").strip().lower()
+        if User.objects.filter(email__iexact=value).exists():
+            raise serializers.ValidationError("A user with this email already exists.")
+        return value
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_confirm"]:
+            raise serializers.ValidationError(
+                {"password_confirm": "Passwords do not match."}
+            )
+        try:
+            validate_password(attrs["password"])
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({"password": list(e.messages)})
+        return attrs
+
+    def create(self, validated_data):
+        email = validated_data["email"]
+        password = validated_data["password"]
+        # Use email as username; truncate to 150 chars (Django User.username max_length)
+        username = email[:150]
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            is_staff=False,
+            is_superuser=False,
+        )
+        return user
 
 
 class StoreSummarySerializer(serializers.ModelSerializer):
@@ -27,6 +77,8 @@ class MeSerializer(serializers.ModelSerializer):
             "id",
             "username",
             "email",
+            "first_name",
+            "last_name",
             "is_staff",
             "is_superuser",
             "active_store_id",

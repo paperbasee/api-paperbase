@@ -3,17 +3,38 @@ from django.db import models
 
 
 class Store(models.Model):
-    """Tenant store for the BaaS platform."""
+    """Tenant store for the BaaS platform. Includes branding for dashboard and storefront."""
 
     name = models.CharField(max_length=255)
+    store_type = models.CharField(
+        max_length=60,
+        blank=True,
+        help_text="Store type/category (e.g. Fashion, Retail, E-commerce). Max 4 words.",
+    )
     domain = models.CharField(
         max_length=255,
         unique=True,
-        help_text="Full domain or host used to route requests to this store.",
+        null=True,
+        blank=True,
+        help_text="Full domain or host used to route requests to this store. Set via Settings > Networking.",
     )
     is_active = models.BooleanField(default=True)
-    timezone = models.CharField(max_length=64, default="UTC")
-    currency = models.CharField(max_length=8, default="USD")
+    # Owner info (always stored with the store)
+    owner_name = models.CharField(
+        max_length=255,
+        help_text="Full name of the store owner.",
+    )
+    owner_email = models.EmailField(
+        help_text="Email address of the store owner.",
+    )
+    # Branding (dashboard sidebar, storefront, invoices)
+    logo = models.ImageField(upload_to="stores/logos/", blank=True, null=True)
+    currency = models.CharField(max_length=8, default="BDT")
+    currency_symbol = models.CharField(max_length=10, default="৳", blank=True)
+    # Store info (for storefront, invoices, emails)
+    contact_email = models.EmailField(blank=True)
+    phone = models.CharField(max_length=50, blank=True)
+    address = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -24,7 +45,7 @@ class Store(models.Model):
         ]
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.domain})"
+        return f"{self.name}" + (f" ({self.domain})" if self.domain else "")
 
 
 class StoreSettings(models.Model):

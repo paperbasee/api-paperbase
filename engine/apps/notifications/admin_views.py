@@ -1,6 +1,6 @@
 from rest_framework import viewsets, mixins
 
-from config.permissions import IsStaffUser
+from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.models import ActivityLog
 from .models import Notification, SystemNotification
@@ -14,13 +14,13 @@ class AdminSystemNotificationViewSet(
     viewsets.GenericViewSet,
 ):
     """List/retrieve/update (mark read) system notifications for admin dashboard."""
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     serializer_class = AdminSystemNotificationSerializer
     queryset = SystemNotification.objects.all().order_by('-created_at')
 
 
 class AdminNotificationViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     serializer_class = AdminNotificationSerializer
     queryset = Notification.objects.all()
 

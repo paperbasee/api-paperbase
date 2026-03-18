@@ -45,20 +45,46 @@ class AdminProductSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'slug', 'created_at', 'updated_at']
 
 
-class AdminCategorySerializer(serializers.ModelSerializer):
-    product_count = serializers.SerializerMethodField()
+class AdminParentCategorySerializer(serializers.ModelSerializer):
+    """Serializer for top-level (parent) categories in nested hierarchy."""
+    child_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Category
         fields = [
             'id', 'name', 'slug', 'description', 'image',
-            'parent',
+            'order', 'is_active', 'child_count',
+        ]
+        read_only_fields = ['id']
+
+    def get_child_count(self, obj):
+        return obj.children.count()
+
+
+class AdminCategorySerializer(serializers.ModelSerializer):
+    """Serializer for child categories (nested under a parent)."""
+    product_count = serializers.SerializerMethodField()
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=Category.objects.filter(parent__isnull=True),
+        allow_null=True,
+        required=False,
+    )
+    parent_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = [
+            'id', 'name', 'slug', 'description', 'image',
+            'parent', 'parent_name',
             'order', 'is_active', 'product_count',
         ]
         read_only_fields = ['id']
 
     def get_product_count(self, obj):
-        return obj.subcategory_products.count()
+        return obj.products.count()
+
+    def get_parent_name(self, obj):
+        return obj.parent.name if obj.parent else ''
 
 
 class AdminBrandSerializer(serializers.ModelSerializer):

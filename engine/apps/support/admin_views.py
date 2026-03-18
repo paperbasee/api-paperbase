@@ -1,6 +1,6 @@
 from rest_framework import viewsets, mixins
 
-from config.permissions import IsStoreStaff
+from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
@@ -16,16 +16,16 @@ class AdminSupportTicketViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    permission_classes = [IsStoreStaff]
+    permission_classes = [IsDashboardUser]
     serializer_class = AdminSupportTicketSerializer
     queryset = SupportTicket.objects.prefetch_related("attachments").all()
 
     def get_queryset(self):
         qs = super().get_queryset()
         ctx = get_active_store(self.request)
-        if not ctx.store:
-            return qs.none()
-        return qs.filter(store=ctx.store)
+        if ctx.store:
+            return qs.filter(store=ctx.store)
+        return qs
 
     def perform_destroy(self, instance):
         pk = instance.pk

@@ -2,7 +2,7 @@ from rest_framework import viewsets, mixins
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from config.permissions import IsStaffUser
+from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.models import ActivityLog
 from .models import Order
@@ -20,7 +20,7 @@ class AdminOrderViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     queryset = Order.objects.prefetch_related('items__product').all()
     lookup_field = 'pk'
 

@@ -2,14 +2,14 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from config.permissions import IsStaffUser
+from config.permissions import IsDashboardUser
 from .models import Inventory, StockMovement
 from .admin_serializers import InventoryListSerializer, InventoryDetailSerializer, StockMovementSerializer
 from .services import adjust_stock
 
 
 class AdminInventoryViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     queryset = Inventory.objects.select_related('product', 'variant').order_by('product__name')
 
     def get_serializer_class(self):
@@ -36,7 +36,7 @@ class AdminInventoryViewSet(viewsets.ModelViewSet):
 
 
 class AdminStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     serializer_class = StockMovementSerializer
     queryset = StockMovement.objects.select_related('inventory__product', 'inventory__variant', 'actor').order_by('-created_at')
 

@@ -46,13 +46,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "corsheaders",
     "rest_framework",
     "rest_framework_simplejwt",
     "engine.core",
     "engine.apps.stores",
+    "engine.apps.billing",
     "engine.apps.products",
     "engine.apps.attributes",
-    "engine.apps.categories",
     "engine.apps.orders",
     "engine.apps.cart",
     "engine.apps.wishlist",
@@ -61,16 +62,20 @@ INSTALLED_APPS = [
     "engine.apps.accounts",
     "engine.apps.customers",
     "engine.apps.inventory",
-    "engine.apps.payments",
     "engine.apps.shipping",
     "engine.apps.coupons",
     "engine.apps.reviews",
+    "engine.apps.banners",
     "engine.apps.analytics",
 ]
+
+# CORS: allow frontend (e.g. localhost:3000) to call API
+CORS_ALLOW_ALL_ORIGINS = True  # For local dev; restrict in production
 
 # Middleware
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

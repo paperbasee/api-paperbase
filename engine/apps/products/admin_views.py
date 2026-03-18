@@ -4,13 +4,14 @@ from rest_framework.decorators import action
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 
-from config.permissions import IsStaffUser
+from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.models import ActivityLog
 from .models import Brand, Category, Product, ProductImage
 from .admin_serializers import (
     AdminBrandSerializer,
     AdminCategorySerializer,
+    AdminParentCategorySerializer,
     AdminProductImageSerializer,
     AdminProductListSerializer,
     AdminProductSerializer,
@@ -18,7 +19,7 @@ from .admin_serializers import (
 
 
 class AdminProductViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     queryset = (
         Product.objects.select_related('category')
@@ -78,17 +79,58 @@ class AdminProductViewSet(viewsets.ModelViewSet):
 
 
 class AdminProductImageViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminProductImageSerializer
     queryset = ProductImage.objects.all()
 
 
+class AdminParentCategoryViewSet(viewsets.ModelViewSet):
+    """Top-level (parent) categories in nested hierarchy. Served at /admin/parent-categories/."""
+    permission_classes = [IsDashboardUser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+    serializer_class = AdminParentCategorySerializer
+    queryset = Category.objects.filter(parent__isnull=True).order_by('order', 'name')
+
+    def perform_create(self, serializer):
+        instance = serializer.save(parent=None)
+        log_activity(
+            request=self.request,
+            action=ActivityLog.Action.CREATE,
+            entity_type="category",
+            entity_id=instance.pk,
+            summary=f"Parent category created: {getattr(instance, 'name', '')}".strip() or "Parent category created",
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save(parent=None)
+        log_activity(
+            request=self.request,
+            action=ActivityLog.Action.UPDATE,
+            entity_type="category",
+            entity_id=instance.pk,
+            summary=f"Parent category updated: {getattr(instance, 'name', '')}".strip() or "Parent category updated",
+        )
+
+    def perform_destroy(self, instance):
+        name = getattr(instance, "name", "")
+        pk = instance.pk
+        super().perform_destroy(instance)
+        log_activity(
+            request=self.request,
+            action=ActivityLog.Action.DELETE,
+            entity_type="category",
+            entity_id=pk,
+            summary=f"Parent category deleted: {name}" if name else "Parent category deleted",
+        )
+
+
 class AdminCategoryViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    """Subcategories (parent is not null). Served at /admin/categories/."""
+    permission_classes = [IsDashboardUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminCategorySerializer
-    queryset = Category.objects.select_related('parent').all()
+    queryset = Category.objects.filter(parent__isnull=False).select_related('parent').order_by('parent', 'order', 'name')
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -124,7 +166,7 @@ class AdminCategoryViewSet(viewsets.ModelViewSet):
 
 
 class AdminBrandViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminBrandSerializer
     queryset = Brand.objects.all()

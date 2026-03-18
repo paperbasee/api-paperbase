@@ -23,9 +23,11 @@ class StoreSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "store_type",
             "domain",
+            "owner_name",
+            "owner_email",
             "is_active",
-            "timezone",
             "currency",
             "created_at",
             "updated_at",

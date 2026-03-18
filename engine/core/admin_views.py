@@ -2,7 +2,7 @@ from datetime import date
 
 from rest_framework import mixins, viewsets
 
-from config.permissions import IsStaffUser
+from config.permissions import IsDashboardUser
 from .models import ActivityLog
 from .admin_serializers import AdminActivityLogSerializer
 
@@ -12,7 +12,7 @@ class AdminActivityLogViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
     serializer_class = AdminActivityLogSerializer
     queryset = ActivityLog.objects.select_related("actor").all()
 

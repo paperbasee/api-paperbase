@@ -23,7 +23,7 @@ API base: `http://127.0.0.1:8000/api/v1/`
 core/
   config/                 # Django project (settings, root URLs)
   engine/
-    core/                  # Branding, activity log, shared utilities
+    core/                  # Activity log, shared utilities
     apps/
       accounts/            # Auth (JWT token endpoints)
       customers/           # Customer profile and addresses
@@ -101,7 +101,7 @@ See `.env.example` for required and optional variables (database, secret key, CO
 2. Create and activate a virtualenv; install dependencies from `requirements.txt`.
 3. Copy `.env.example` to `.env` and set at least `SECRET_KEY` and `DATABASE_URL` (e.g. `sqlite:///db.sqlite3` for local).
 4. Run `python manage.py migrate` and `python manage.py createsuperuser`.
-5. Optionally configure dashboard branding and R2/Meta in admin or `.env`.
+5. Optionally configure store branding (logo, name, currency) in Django admin (Store model) and R2/Meta in `.env`.
 6. Connect any frontend to the `/api/v1/` endpoints.
 
 To add a payment gateway, implement the flow in `engine.apps.payments` (create `Payment`/`Transaction`, call gateway, expose webhook). Shipping rules are configured via admin (zones, methods, rates).

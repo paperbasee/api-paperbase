@@ -21,6 +21,22 @@ class IsStaffUser(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
+class IsDashboardUser(BasePermission):
+    """
+    Allow authenticated users who are either staff OR have an active store membership.
+    Used for dashboard API so signup users (not staff) can use the dashboard when they own a store.
+    Staff/superusers retain full access; Django admin (/admin/) still requires is_staff.
+    """
+
+    def has_permission(self, request, view):
+        if not request.user or not getattr(request.user, "is_authenticated", False):
+            return False
+        if request.user.is_staff:
+            return True
+        ctx = get_active_store(request)
+        return bool(ctx.store and ctx.membership)
+
+
 class IsStoreStaff(BasePermission):
     """
     Store-aware permission for dashboard endpoints.

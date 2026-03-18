@@ -5,10 +5,16 @@ from .models import Store, StoreSettings, StoreMembership
 
 @admin.register(Store)
 class StoreAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "domain", "is_active", "created_at")
+    list_display = ("id", "name", "domain", "owner_name", "owner_email", "currency_symbol", "is_active", "created_at")
     list_filter = ("is_active", "created_at")
-    search_fields = ("name", "domain")
+    search_fields = ("name", "domain", "owner_name", "owner_email")
     ordering = ("-created_at",)
+    fieldsets = (
+        (None, {"fields": ("name", "store_type", "domain", "is_active")}),
+        ("Owner", {"fields": ("owner_name", "owner_email")}),
+        ("Branding", {"fields": ("logo", "currency", "currency_symbol")}),
+        ("Store info", {"fields": ("contact_email", "phone", "address")}),
+    )
 
 
 @admin.register(StoreSettings)

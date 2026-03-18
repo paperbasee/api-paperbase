@@ -6,3 +6,6 @@ class StoresConfig(AppConfig):
     name = "engine.apps.stores"
     verbose_name = "Stores"
 
+    def ready(self):
+        import engine.apps.stores.signals  # noqa: F401
+

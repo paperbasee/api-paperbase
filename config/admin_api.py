@@ -8,8 +8,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
-from config.permissions import IsStaffUser
-from engine.core.models import DashboardBranding
+from config.permissions import IsDashboardUser
+from engine.apps.billing.feature_gate import require_feature
+from engine.core.tenancy import get_active_store
+from engine.apps.stores.models import Store
 from engine.apps.orders.models import Order
 from engine.apps.orders.admin_serializers import AdminOrderListSerializer
 from engine.apps.products.models import Product, Category, Brand
@@ -20,7 +22,7 @@ from engine.apps.wishlist.models import WishlistItem
 
 
 class DashboardStatsView(APIView):
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
 
     def get(self, request):
         order_counts = Order.objects.aggregate(
@@ -74,7 +76,7 @@ class DashboardAnalyticsView(APIView):
     existing global counters used in the UI navigation.
     """
 
-    permission_classes = [IsStaffUser]
+    permission_classes = [IsDashboardUser]
 
     def _parse_date_range(self, request) -> tuple[date, date]:
         """Parse start/end date from query params, defaulting to the last 30 days."""
@@ -111,6 +113,7 @@ class DashboardAnalyticsView(APIView):
         return TruncDate
 
     def get(self, request):
+        require_feature(request.user, "advanced_analytics")
         start_date, end_date = self._parse_date_range(request)
         bucket = request.query_params.get('bucket', 'day')
         bucket_func = self._get_bucket_func(bucket)
@@ -215,48 +218,89 @@ class DashboardAnalyticsView(APIView):
         })
 
 
-def _get_branding_response(request, instance):
-    """Build branding JSON for API response."""
+def _get_branding_response(request, store: Store):
+    """Build branding JSON for API response from Store."""
     logo_url = None
-    if instance.logo:
-        logo_url = request.build_absolute_uri(instance.logo.url)
+    if store.logo:
+        logo_url = request.build_absolute_uri(store.logo.url)
     return {
         'logo_url': logo_url,
-        'admin_name': instance.admin_name or 'E-commerce Store',
-        'admin_subtitle': instance.admin_subtitle or 'Admin dashboard',
-        'currency_symbol': instance.currency_symbol or '$',
+        'admin_name': store.name or 'E-commerce Store',
+        'owner_name': store.owner_name or '',
+        'owner_email': store.owner_email or '',
+        'currency_symbol': store.currency_symbol or '৳',
+        'store_type': store.store_type or '',
+        'contact_email': store.contact_email or '',
+        'phone': store.phone or '',
+        'address': store.address or '',
     }
 
 
 class BrandingView(APIView):
-    """GET: return branding. PATCH: update branding (multipart: logo, admin_name, admin_subtitle, currency_symbol)."""
-    permission_classes = [IsStaffUser]
+    """GET/PATCH branding from Store. Uses active store (X-Store-ID or host) or first store as fallback."""
+    permission_classes = [IsDashboardUser]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    def _get_instance(self):
-        instance = DashboardBranding.objects.first()
-        if instance is None:
-            instance = DashboardBranding.objects.create(
-                admin_name='E-commerce Store', admin_subtitle='Admin dashboard'
-            )
-        return instance
+    def _get_store(self, request):
+        ctx = get_active_store(request)
+        if ctx.store:
+            return ctx.store
+        return Store.objects.filter(is_active=True).first()
 
     def get(self, request):
-        instance = self._get_instance()
-        return Response(_get_branding_response(request, instance))
+        store = self._get_store(request)
+        if not store:
+            return Response({
+                'logo_url': None,
+                'admin_name': 'E-commerce Store',
+                'owner_name': '',
+                'owner_email': '',
+                'currency_symbol': '৳',
+                'store_type': '',
+                'contact_email': '',
+                'phone': '',
+                'address': '',
+            })
+        return Response(_get_branding_response(request, store))
 
     def patch(self, request):
-        instance = self._get_instance()
+        store = self._get_store(request)
+        if not store:
+            return Response(
+                {'detail': 'No store available. Create a store first.'},
+                status=400,
+            )
         if 'admin_name' in request.data:
-            instance.admin_name = request.data.get('admin_name', instance.admin_name) or 'E-commerce Store'
-        if 'admin_subtitle' in request.data:
-            instance.admin_subtitle = request.data.get('admin_subtitle', instance.admin_subtitle) or 'Admin dashboard'
+            val = request.data.get('admin_name', '').strip() or 'E-commerce Store'
+            store.name = val
+        if 'owner_name' in request.data:
+            val = (request.data.get('owner_name') or '').strip()[:255]
+            if val:
+                store.owner_name = val
+        if 'owner_email' in request.data:
+            val = (request.data.get('owner_email') or '').strip()[:254]
+            if val and '@' in val:
+                store.owner_email = val
         if 'currency_symbol' in request.data:
-            instance.currency_symbol = (request.data.get('currency_symbol') or '$').strip()[:10]
+            store.currency_symbol = (request.data.get('currency_symbol') or '৳').strip()[:10]
+        if 'store_type' in request.data:
+            val = (request.data.get('store_type') or '').strip()[:60]
+            if val and len(val.split()) > 4:
+                return Response(
+                    {'detail': 'store_type must be at most 4 words.'},
+                    status=400,
+                )
+            store.store_type = val
+        if 'contact_email' in request.data:
+            store.contact_email = (request.data.get('contact_email') or '').strip()[:254]
+        if 'phone' in request.data:
+            store.phone = (request.data.get('phone') or '').strip()[:50]
+        if 'address' in request.data:
+            store.address = (request.data.get('address') or '').strip()
         logo_file = request.FILES.get('logo')
         if logo_file:
-            instance.logo = logo_file
+            store.logo = logo_file
         if request.data.get('clear_logo') in (True, 'true', '1'):
-            instance.logo = None
-        instance.save()
-        return Response(_get_branding_response(request, instance))
+            store.logo = None
+        store.save()
+        return Response(_get_branding_response(request, store))
