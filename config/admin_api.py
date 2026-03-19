@@ -9,12 +9,11 @@ from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from config.permissions import IsDashboardUser
-from engine.apps.billing.feature_gate import require_feature
 from engine.core.tenancy import get_active_store
 from engine.apps.stores.models import Store
 from engine.apps.orders.models import Order
 from engine.apps.orders.admin_serializers import AdminOrderListSerializer
-from engine.apps.products.models import Product, Category, Brand
+from engine.apps.products.models import Product, Category
 from engine.apps.support.models import ContactSubmission
 from engine.apps.notifications.models import Notification
 from engine.apps.cart.models import Cart, CartItem
@@ -58,7 +57,6 @@ class DashboardStatsView(APIView):
             },
             'categories': Category.objects.filter(parent__isnull=True).count(),
             'subcategories': Category.objects.filter(parent__isnull=False).count(),
-            'brands': Brand.objects.count(),
             'contacts': ContactSubmission.objects.count(),
             'notifications': Notification.objects.filter(is_active=True).count(),
             # Count only carts that actually have at least one item
@@ -113,7 +111,6 @@ class DashboardAnalyticsView(APIView):
         return TruncDate
 
     def get(self, request):
-        require_feature(request.user, "advanced_analytics")
         start_date, end_date = self._parse_date_range(request)
         bucket = request.query_params.get('bucket', 'day')
         bucket_func = self._get_bucket_func(bucket)
@@ -233,6 +230,7 @@ def _get_branding_response(request, store: Store):
         'contact_email': store.contact_email or '',
         'phone': store.phone or '',
         'address': store.address or '',
+        'brand_showcase': getattr(store, 'brand_showcase', []) or [],
     }
 
 
@@ -260,6 +258,7 @@ class BrandingView(APIView):
                 'contact_email': '',
                 'phone': '',
                 'address': '',
+                'brand_showcase': [],
             })
         return Response(_get_branding_response(request, store))
 
@@ -302,5 +301,9 @@ class BrandingView(APIView):
             store.logo = logo_file
         if request.data.get('clear_logo') in (True, 'true', '1'):
             store.logo = None
+        if 'brand_showcase' in request.data:
+            val = request.data.get('brand_showcase')
+            if isinstance(val, list):
+                store.brand_showcase = val
         store.save()
         return Response(_get_branding_response(request, store))

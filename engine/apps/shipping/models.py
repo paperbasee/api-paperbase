@@ -2,14 +2,26 @@ from decimal import Decimal
 
 from django.db import models
 
+from engine.apps.stores.models import Store
+
 
 class ShippingZone(models.Model):
-    """Region (e.g. country codes or zone names) for shipping rules."""
+    """Region (Bangladesh-focused) for shipping rules."""
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE,
+        related_name="shipping_zones",
+    )
     name = models.CharField(max_length=100)
-    country_codes = models.CharField(
+    delivery_areas = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Comma-separated delivery areas (e.g. inside,outside). Blank = any.",
+    )
+    districts = models.CharField(
         max_length=500,
         blank=True,
-        help_text="Comma-separated ISO country codes, e.g. US,CA,GB",
+        help_text="Comma-separated districts/cities this zone applies to (e.g. Dhaka,Chittagong). Blank = any.",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -17,6 +29,12 @@ class ShippingZone(models.Model):
 
     class Meta:
         ordering = ['name']
+        indexes = [
+            models.Index(fields=["store", "is_active", "name"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["store", "name"], name="uniq_shipping_zone_store_name"),
+        ]
 
     def __str__(self):
         return self.name
@@ -31,6 +49,11 @@ class ShippingMethod(models.Model):
         PICKUP = 'pickup', 'Pickup'
         OTHER = 'other', 'Other'
 
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE,
+        related_name="shipping_methods",
+    )
     name = models.CharField(max_length=100)
     method_type = models.CharField(max_length=20, choices=MethodType.choices, default=MethodType.STANDARD)
     zones = models.ManyToManyField(
@@ -46,6 +69,12 @@ class ShippingMethod(models.Model):
 
     class Meta:
         ordering = ['order', 'name']
+        indexes = [
+            models.Index(fields=["store", "is_active", "order"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(fields=["store", "name"], name="uniq_shipping_method_store_name"),
+        ]
 
     def __str__(self):
         return self.name
@@ -59,6 +88,11 @@ class ShippingRate(models.Model):
         WEIGHT = 'weight', 'Per unit weight'
         ORDER_TOTAL = 'order_total', 'By order total'
 
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE,
+        related_name="shipping_rates",
+    )
     shipping_method = models.ForeignKey(
         ShippingMethod,
         on_delete=models.CASCADE,
@@ -77,6 +111,16 @@ class ShippingRate(models.Model):
 
     class Meta:
         ordering = ['shipping_method', 'shipping_zone']
+        indexes = [
+            models.Index(fields=["store", "is_active"]),
+            models.Index(fields=["store", "shipping_method", "shipping_zone"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["store", "shipping_method", "shipping_zone", "rate_type", "min_order_total", "max_order_total"],
+                name="uniq_shipping_rate_rule",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.shipping_method.name} / {self.shipping_zone.name}: {self.price}"

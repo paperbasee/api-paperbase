@@ -1,8 +1,13 @@
+from django import forms
 from django.contrib import admin
 from django.utils.html import mark_safe
 
+from engine.apps.stores.models import Store
+
+from .admin_forms import ProductAdminForm, build_product_extra_form_fields
+from .constants import MAX_PRODUCT_IMAGES_TOTAL
+from .extra_schema import form_field_name_for_schema_item, get_product_extra_schema
 from .models import (
-    Brand,
     Category,
     Product,
     ProductImage,
@@ -16,10 +21,14 @@ from .models import (
 class ProductImageInline(admin.TabularInline):
     model = ProductImage
     extra = 0
+    max_num = MAX_PRODUCT_IMAGES_TOTAL
+    fields = ("image", "alt", "order")
+    verbose_name_plural = "Gallery images"
 
 
 @admin.register(Product)
 class ProductAdmin(admin.ModelAdmin):
+    form = ProductAdminForm
     list_display = [
         'name',
         'sku',
@@ -37,24 +46,117 @@ class ProductAdmin(admin.ModelAdmin):
     search_fields = ['name', 'brand', 'sku']
     prepopulated_fields = {'slug': ('name',)}
     inlines = [ProductImageInline]
-    autocomplete_fields = ['category']
-    fieldsets = (
-        (None, {
-            'fields': ('name', 'brand', 'slug', 'sku', 'status', 'category')
-        }),
-        ('Pricing', {
-            'fields': ('price', 'original_price', 'badge')
-        }),
-        ('Media', {
-            'fields': ('image',)
-        }),
-        ('Stock', {
-            'fields': ('stock', 'stock_tracking')
-        }),
-        ('Additional Information', {
-            'fields': ('description', 'is_featured', 'is_active')
-        }),
-    )
+    autocomplete_fields = ['category', 'store']
+
+    def _resolve_store(self, request, obj=None) -> Store | None:
+        if obj and getattr(obj, "pk", None) and getattr(obj, "store_id", None):
+            return obj.store
+        if request.method == "POST" and request.POST.get("store"):
+            try:
+                return Store.objects.get(pk=request.POST["store"])
+            except (Store.DoesNotExist, ValueError, TypeError):
+                return None
+        if request.method == "GET" and request.GET.get("store__id__exact"):
+            # Useful when coming from a filtered changelist.
+            try:
+                return Store.objects.get(pk=request.GET["store__id__exact"])
+            except (Store.DoesNotExist, ValueError, TypeError):
+                return None
+        return None
+
+    def _extra_schema(self, request, obj=None) -> list[dict]:
+        store = self._resolve_store(request, obj=obj)
+        return get_product_extra_schema(store) if store else []
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        """
+        Provide a dynamic form class that includes extra_schema_* fields at class-definition time.
+
+        Django admin validates `fieldsets` during `super().get_form(...)` and can raise FieldError
+        before we get a chance to mutate `form.base_fields`. So we must pass a form class that
+        already declares these fields.
+        """
+        schema = self._extra_schema(request, obj=obj)
+        extra_fields = build_product_extra_form_fields(schema)
+
+        base_form = kwargs.pop("form", None) or self.form
+        if extra_fields:
+            dynamic_form = type(
+                "DynamicProductAdminForm",
+                (base_form,),
+                {**extra_fields},
+            )
+            kwargs["form"] = dynamic_form
+        else:
+            kwargs["form"] = base_form
+
+        return super().get_form(request, obj=obj, change=change, **kwargs)
+
+    def get_fieldsets(self, request, obj=None):
+        base = [
+            (
+                None,
+                {
+                    "fields": (
+                        "store",
+                        "name",
+                        "brand",
+                        "slug",
+                        "sku",
+                        "status",
+                        "category",
+                    ),
+                    "description": (
+                        "Choose Store first when adding a product. Custom fields from that store’s "
+                        "dashboard schema show after you save or if the form reloads with errors."
+                    ),
+                },
+            ),
+            ("Pricing", {"fields": ("price", "original_price", "badge")}),
+            ("Media", {"fields": ("image",)}),
+            ("Stock", {"fields": ("stock", "stock_tracking")}),
+            (
+                "Additional Information",
+                {"fields": ("description", "is_featured", "is_active")},
+            ),
+        ]
+
+        schema = self._extra_schema(request, obj=obj)
+        extra_names = [
+            form_field_name_for_schema_item(str(it.get("id") or it.get("name") or ""))
+            for it in schema
+            if (it.get("name") or "").strip()
+        ]
+
+        if extra_names:
+            base.append(
+                (
+                    "Custom fields (dashboard schema)",
+                    {
+                        "fields": tuple(extra_names),
+                        "description": (
+                            "Defined in Store settings → extra_field_schema (same as the merchant "
+                            "dashboard). Values are saved on the product’s extra_data JSON field."
+                        ),
+                    },
+                )
+            )
+        else:
+            base.append(
+                (
+                    "Extra data (JSON)",
+                    {
+                        "fields": ("extra_data",),
+                        "classes": ("collapse",),
+                        "description": (
+                            "No product custom fields are configured for the selected store yet. "
+                            "Add them in the dashboard under Settings → Dynamic Fields, or edit JSON here."
+                        ),
+                    },
+                )
+            )
+
+        return base
 
     def formfield_for_dbfield(self, db_field, request, **kwargs):
         field = super().formfield_for_dbfield(db_field, request, **kwargs)
@@ -102,37 +204,6 @@ class CategoryAdmin(admin.ModelAdmin):
         return f"{count} products"
 
     product_count.short_description = 'Products'
-
-
-@admin.register(Brand)
-class BrandAdmin(admin.ModelAdmin):
-    list_display = ['name', 'brand_type', 'order', 'is_active', 'redirect_url_preview', 'created_at']
-    list_filter = ['brand_type', 'is_active']
-    list_editable = ['order', 'is_active']
-    search_fields = ['name', 'slug']
-    prepopulated_fields = {'slug': ('name',)}
-    ordering = ['brand_type', 'order', 'name']
-    readonly_fields = ['created_at', 'updated_at']
-    fieldsets = (
-        (None, {
-            'fields': ('name', 'slug', 'image')
-        }),
-        ('Configuration', {
-            'fields': ('brand_type', 'redirect_url', 'order', 'is_active')
-        }),
-        ('Timestamps', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
-
-    def redirect_url_preview(self, obj):
-        url = obj.redirect_url
-        if len(url) > 40:
-            return f"{url[:40]}..."
-        return url
-
-    redirect_url_preview.short_description = 'Redirect URL'
 
 
 class ProductAttributeValueInline(admin.TabularInline):

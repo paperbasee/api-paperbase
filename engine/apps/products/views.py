@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Count, Prefetch, Q, Sum
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.generics import ListAPIView, RetrieveAPIView
@@ -8,9 +8,8 @@ from rest_framework.views import APIView
 from engine.apps.analytics.service import meta_conversions
 from engine.core.tenancy import get_active_store
 
-from .models import Brand, Category, Product
+from .models import Category, Product, ProductVariant, ProductVariantAttribute
 from .serializers import (
-    BrandSerializer,
     CategorySerializer,
     ProductDetailSerializer,
     ProductListSerializer,
@@ -27,7 +26,12 @@ class ProductListView(ListAPIView):
             store=ctx.store,
             is_active=True,
             status=Product.Status.ACTIVE,
-        ).select_related("category").prefetch_related("images")
+        ).select_related("category").prefetch_related("images").annotate(
+            _pub_variant_count=Count("variants", filter=Q(variants__is_active=True)),
+            _pub_variant_stock_sum=Sum(
+                "variants__stock_quantity", filter=Q(variants__is_active=True)
+            ),
+        )
         category = self.request.query_params.get('category')
         brand = self.request.query_params.get('brand')
 
@@ -58,11 +62,29 @@ class ProductDetailView(RetrieveAPIView):
     serializer_class = ProductDetailSerializer
     def get_queryset(self):
         ctx = get_active_store(self.request)
-        return Product.objects.filter(
-            store=ctx.store,
-            is_active=True,
-            status=Product.Status.ACTIVE,
-        ).select_related("category").prefetch_related("images")
+        active_variant_qs = ProductVariant.objects.filter(is_active=True).prefetch_related(
+            Prefetch(
+                "attribute_values",
+                queryset=ProductVariantAttribute.objects.select_related(
+                    "attribute_value__attribute"
+                ),
+            )
+        )
+        return (
+            Product.objects.filter(
+                store=ctx.store,
+                is_active=True,
+                status=Product.Status.ACTIVE,
+            )
+            .select_related("category")
+            .prefetch_related("images", Prefetch("variants", queryset=active_variant_qs))
+            .annotate(
+                _pub_variant_count=Count("variants", filter=Q(variants__is_active=True)),
+                _pub_variant_stock_sum=Sum(
+                    "variants__stock_quantity", filter=Q(variants__is_active=True)
+                ),
+            )
+        )
     lookup_url_kwarg = 'identifier'
 
     def get_object(self):
@@ -100,8 +122,14 @@ class ProductRelatedView(ListAPIView):
         return (
             Product.objects.filter(is_active=True, status=Product.Status.ACTIVE, category=product.category)
             .exclude(id=product.id)
-            .select_related('category')
-            .prefetch_related('images')[:4]
+            .select_related("category")
+            .prefetch_related("images")
+            .annotate(
+                _pub_variant_count=Count("variants", filter=Q(variants__is_active=True)),
+                _pub_variant_stock_sum=Sum(
+                    "variants__stock_quantity", filter=Q(variants__is_active=True)
+                ),
+            )[:4]
         )
 
 
@@ -160,19 +188,32 @@ class BrandListView(APIView):
 
 class BrandShowcaseView(APIView):
     """
-    List all active brands for the homepage showcase.
+    List all active brands for the homepage showcase from Store.brand_showcase.
     Can filter by brand_type (accessories, gadgets) using query parameter.
     """
     def get(self, request):
-        brand_type = request.query_params.get('type')
+        ctx = get_active_store(request)
+        store = ctx.store
+        if not store:
+            return Response([])
 
-        qs = Brand.objects.filter(is_active=True)
+        showcase = getattr(store, "brand_showcase", []) or []
+        brand_type = request.query_params.get("type")
 
-        if brand_type:
-            qs = qs.filter(brand_type=brand_type)
+        result = []
+        for item in showcase:
+            if not item.get("is_active", True):
+                continue
+            if brand_type and item.get("brand_type") != brand_type:
+                continue
+            entry = dict(item)
+            img = entry.get("image_url")
+            if img and not img.startswith(("http://", "https://")):
+                entry["image_url"] = request.build_absolute_uri(img) if request else img
+            result.append(entry)
 
-        serializer = BrandSerializer(qs, many=True, context={'request': request})
-        return Response(serializer.data)
+        result.sort(key=lambda x: (x.get("brand_type", ""), x.get("order", 0), x.get("name", "")))
+        return Response(result)
 
 
 class ProductSearchView(ListAPIView):

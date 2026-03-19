@@ -53,7 +53,6 @@ INSTALLED_APPS = [
     "engine.apps.stores",
     "engine.apps.billing",
     "engine.apps.products",
-    "engine.apps.attributes",
     "engine.apps.orders",
     "engine.apps.cart",
     "engine.apps.wishlist",
@@ -71,6 +70,9 @@ INSTALLED_APPS = [
 
 # CORS: allow frontend (e.g. localhost:3000) to call API
 CORS_ALLOW_ALL_ORIGINS = True  # For local dev; restrict in production
+CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults").defaults.default_headers) + [
+    "x-store-id",
+]
 
 # Middleware
 MIDDLEWARE = [

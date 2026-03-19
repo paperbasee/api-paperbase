@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from django.db import transaction
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
 from rest_framework.exceptions import NotFound
 from rest_framework.generics import CreateAPIView, ListAPIView, RetrieveAPIView
@@ -14,6 +15,8 @@ from engine.apps.analytics.service import meta_conversions
 from .models import Order, OrderItem
 from .serializers import OrderCreateSerializer, OrderSerializer, DirectOrderCreateSerializer
 from .utils import get_next_order_number
+from .stock import adjust_stock
+from engine.apps.shipping.service import quote_shipping
 
 
 class OrderCreateView(CreateAPIView):
@@ -25,34 +28,50 @@ class OrderCreateView(CreateAPIView):
         ser = self.get_serializer(data=request.data)
         ser.is_valid(raise_exception=True)
         cart = get_or_create_cart(request)
-        items = list(cart.items.select_related('product'))
+        items = list(cart.items.select_related('product', 'variant'))
         if not items:
             return Response(
                 {'detail': 'Cart is empty.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        # Get products with locked rows for atomic stock updates
-        from engine.apps.products.models import Product
+        # Lock products and variants for atomic stock validation.
+        from engine.apps.products.models import Product, ProductVariant
         product_ids = [ci.product_id for ci in items]
+        variant_ids = [ci.variant_id for ci in items if getattr(ci, "variant_id", None)]
         locked_products = {
-            p.id: p for p in Product.objects.filter(
-                id__in=product_ids
-            ).select_for_update()
+            p.id: p for p in Product.objects.filter(id__in=product_ids).select_for_update()
+        }
+        locked_variants = {
+            v.id: v
+            for v in ProductVariant.objects.filter(id__in=variant_ids)
+            .select_for_update()
+            .select_related("product")
         }
         
-        # Check stock availability
+        # Check stock availability (variant stock when variant is present).
         stock_errors = []
         for ci in items:
-            product = locked_products.get(ci.product_id)
-            if not product:
-                stock_errors.append(f"Product {ci.product.name} not found.")
-                continue
-            if product.stock < ci.quantity:
-                stock_errors.append(
-                    f"Insufficient stock for {product.name}. "
-                    f"Available: {product.stock}, Requested: {ci.quantity}"
-                )
+            if getattr(ci, "variant_id", None):
+                variant = locked_variants.get(ci.variant_id)
+                if not variant:
+                    stock_errors.append(f"Variant {ci.variant_id} not found.")
+                    continue
+                if variant.stock_quantity < ci.quantity:
+                    stock_errors.append(
+                        f"Insufficient variant stock for {variant.product.name}. "
+                        f"Available: {variant.stock_quantity}, Requested: {ci.quantity}"
+                    )
+            else:
+                product = locked_products.get(ci.product_id)
+                if not product:
+                    stock_errors.append(f"Product {ci.product.name} not found.")
+                    continue
+                if product.stock < ci.quantity:
+                    stock_errors.append(
+                        f"Insufficient stock for {product.name}. "
+                        f"Available: {product.stock}, Requested: {ci.quantity}"
+                    )
         
         if stock_errors:
             return Response(
@@ -61,9 +80,16 @@ class OrderCreateView(CreateAPIView):
             )
         
         # Create order and reduce stock
-        total = Decimal('0.00')
+        subtotal = Decimal('0.00')
+        store = getattr(cart, "store", None)
+        if not store:
+            return Response(
+                {"detail": "No store found for this cart."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         order = Order.objects.create(
-            order_number=get_next_order_number(),
+            store=store,
+            order_number=get_next_order_number(store),
             user=request.user if request.user.is_authenticated else None,
             email=ser.validated_data['email'],
             shipping_name=ser.validated_data['shipping_name'],
@@ -71,17 +97,50 @@ class OrderCreateView(CreateAPIView):
         )
         for ci in items:
             product = locked_products[ci.product_id]
-            price = product.price
-            OrderItem.objects.create(
-                order=order, product=product, quantity=ci.quantity,
-                size=ci.size or '', price=price
+            variant = locked_variants.get(ci.variant_id) if getattr(ci, "variant_id", None) else None
+            price = (
+                getattr(variant, "price_override", None) or product.price
+                if variant is not None
+                else product.price
             )
-            # Reduce stock atomically
-            product.stock -= ci.quantity
-            product.save(update_fields=['stock'])
-            total += price * ci.quantity
-        order.total = total
-        order.save(update_fields=['total'])
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                variant=variant,
+                quantity=ci.quantity,
+                price=price
+            )
+            try:
+                adjust_stock(product_id=product.id, variant_id=variant.id if variant else None, delta_qty=ci.quantity)
+            except DjangoValidationError as e:
+                return Response(
+                    {"detail": "Stock validation failed.", "errors": e.message_dict if hasattr(e, "message_dict") else str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            subtotal += price * ci.quantity
+
+        quote = quote_shipping(
+            store=order.store,
+            order_subtotal=subtotal,
+            delivery_area=(order.delivery_area or "").strip().lower() or None,
+            district=(order.district or "").strip() or None,
+        )
+        order.subtotal = subtotal
+        order.shipping_cost = quote.shipping_cost
+        order.shipping_zone = quote.zone
+        order.shipping_method = quote.method
+        order.shipping_rate = quote.rate
+        order.total = subtotal + quote.shipping_cost
+        order.save(
+            update_fields=[
+                "subtotal",
+                "shipping_cost",
+                "shipping_zone",
+                "shipping_method",
+                "shipping_rate",
+                "total",
+            ]
+        )
         cart.items.all().delete()
 
         meta_conversions.track_purchase(request, order)
@@ -128,9 +187,8 @@ class DirectOrderCreateView(CreateAPIView):
             )
         
         locked_products = {
-            str(p.id): p for p in Product.objects.filter(
-                id__in=product_ids
-            ).select_for_update()
+            str(p.id): p
+            for p in Product.objects.filter(id__in=product_ids).select_for_update()
         }
         
         # Check stock availability
@@ -166,12 +224,11 @@ class DirectOrderCreateView(CreateAPIView):
         else:
             delivery_area = ser.validated_data['delivery_area']
 
-        shipping_cost = Decimal('60.00') if delivery_area == 'inside' else Decimal('150.00')
-
         # Create order and reduce stock
-        total = Decimal('0.00')
+        subtotal = Decimal('0.00')
         order = Order.objects.create(
-            order_number=get_next_order_number(),
+            store=locked_products[product_id_str].store,
+            order_number=get_next_order_number(locked_products[product_id_str].store),
             user=request.user if request.user.is_authenticated else None,
             email=email,
             shipping_name=ser.validated_data['shipping_name'],
@@ -188,17 +245,40 @@ class DirectOrderCreateView(CreateAPIView):
             price = product.price
             OrderItem.objects.create(
                 order=order, product=product, quantity=quantity,
-                size='', price=price
+                price=price
             )
-            # Reduce stock atomically
-            product.stock -= quantity
-            product.save(update_fields=['stock'])
-            total += price * quantity
+            try:
+                adjust_stock(product_id=product.id, variant_id=None, delta_qty=quantity)
+            except DjangoValidationError as e:
+                return Response(
+                    {"detail": "Stock validation failed.", "errors": e.message_dict if hasattr(e, "message_dict") else str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            subtotal += price * quantity
         
-        # Add shipping cost
-        total += shipping_cost
-        order.total = total
-        order.save(update_fields=['total'])
+        # Add shipping cost from dynamic shipping rules (store-scoped).
+        quote = quote_shipping(
+            store=order.store,
+            order_subtotal=subtotal,
+            delivery_area=delivery_area,
+            district=district or None,
+        )
+        order.subtotal = subtotal
+        order.shipping_cost = quote.shipping_cost
+        order.shipping_zone = quote.zone
+        order.shipping_method = quote.method
+        order.shipping_rate = quote.rate
+        order.total = subtotal + quote.shipping_cost
+        order.save(
+            update_fields=[
+                "subtotal",
+                "shipping_cost",
+                "shipping_zone",
+                "shipping_method",
+                "shipping_rate",
+                "total",
+            ]
+        )
 
         meta_conversions.track_add_payment_info(request, {
             'email': order.email,

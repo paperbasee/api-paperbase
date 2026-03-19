@@ -12,6 +12,7 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
         fields = [
             "modules_enabled",
             "low_stock_threshold",
+            "extra_field_schema",
         ]
 
 

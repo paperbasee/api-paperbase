@@ -1,19 +1,24 @@
-from rest_framework import viewsets, mixins
+from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.models import ActivityLog
+from engine.core.tenancy import get_active_store
 from .models import Order
 from .admin_serializers import (
     AdminOrderListSerializer,
     AdminOrderSerializer,
+    AdminOrderCreateSerializer,
+    AdminOrderUpdateSerializer,
     AdminOrderStatusSerializer,
 )
 
 
 class AdminOrderViewSet(
+    mixins.CreateModelMixin,
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
@@ -25,9 +30,64 @@ class AdminOrderViewSet(
     lookup_field = 'pk'
 
     def get_serializer_class(self):
+        if self.action == "create":
+            return AdminOrderCreateSerializer
         if self.action == 'list':
             return AdminOrderListSerializer
+        if self.action in ("update", "partial_update"):
+            return AdminOrderUpdateSerializer
         return AdminOrderSerializer
+
+    def update(self, request, *args, **kwargs):
+        """
+        Use AdminOrderUpdateSerializer for validation/write, but always respond with AdminOrderSerializer.
+
+        This avoids response serialization errors (items are write-only in update serializer).
+        """
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = AdminOrderUpdateSerializer(
+            instance,
+            data=request.data,
+            partial=partial,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        instance.refresh_from_db()
+        return Response(AdminOrderSerializer(instance).data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ctx = get_active_store(self.request)
+        if ctx.store:
+            return qs.filter(store=ctx.store)
+        return qs
+
+    def perform_create(self, serializer):
+        ctx = get_active_store(self.request)
+        store = ctx.store
+        if not store:
+            raise ValidationError(
+                {
+                    "detail": (
+                        "No active store resolved. Re-login, switch store, or send the "
+                        "X-Store-ID header."
+                    )
+                }
+            )
+        instance = serializer.save(store=store)
+        log_activity(
+            request=self.request,
+            action=ActivityLog.Action.CREATE,
+            entity_type="order",
+            entity_id=instance.pk,
+            summary=f"Order created: {instance.order_number}",
+        )
 
     @action(detail=True, methods=['patch'], url_path='status')
     def update_status(self, request, pk=None):

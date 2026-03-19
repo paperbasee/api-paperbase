@@ -41,6 +41,7 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
             "marketing_opt_in",
             "default_shipping_address",
             "default_billing_address",
+            "extra_data",
             "addresses",
             "created_at",
             "updated_at",
@@ -61,5 +62,6 @@ class AdminCustomerListSerializer(serializers.ModelSerializer):
             "user_username",
             "phone",
             "marketing_opt_in",
+            "extra_data",
             "created_at",
         ]

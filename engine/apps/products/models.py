@@ -120,6 +120,11 @@ class Product(models.Model):
     )
     is_featured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
+    extra_data = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Dynamic extra fields per extra_field_schema (e.g. color, warranty).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -134,6 +139,25 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        from .constants import MAX_PRODUCT_IMAGES_TOTAL
+
+        if not self.pk:
+            return
+        main = 1 if (self.image and getattr(self.image, "name", None)) else 0
+        gallery = self.images.count()
+        if main + gallery > MAX_PRODUCT_IMAGES_TOTAL:
+            raise ValidationError(
+                {
+                    "image": (
+                        f"A product can have at most {MAX_PRODUCT_IMAGES_TOTAL} images in total "
+                        "(main image + gallery). Remove gallery images in the inline below or clear "
+                        "the main image."
+                    )
+                }
+            )
 
     def save(self, *args, **kwargs):
         # Auto-generate slug from name - always update when name changes
@@ -175,6 +199,29 @@ class ProductImage(models.Model):
 
     class Meta:
         ordering = ['order']
+
+    def clean(self):
+        super().clean()
+        from .constants import MAX_PRODUCT_IMAGES_TOTAL
+
+        product = self.product
+        if not product.pk:
+            return
+        main = 1 if (product.image and getattr(product.image, "name", None)) else 0
+        others = product.images.exclude(pk=self.pk) if self.pk else product.images.all()
+        gcount = others.count()
+        if self._state.adding and main + gcount >= MAX_PRODUCT_IMAGES_TOTAL:
+            raise ValidationError(
+                {
+                    "image": (
+                        f"Maximum {MAX_PRODUCT_IMAGES_TOTAL} images per product "
+                        "(including the main image field on the product)."
+                    )
+                }
+            )
+
+    def __str__(self) -> str:
+        return f"Image for {self.product_id}"
 
 
 class ProductAttribute(models.Model):
@@ -260,59 +307,3 @@ class ProductVariantAttribute(models.Model):
 
     class Meta:
         unique_together = [['variant', 'attribute_value']]
-
-
-class Brand(models.Model):
-    """
-    Brand model for showcasing top brands on the homepage.
-    Supports image upload and redirect URL for brand cards.
-    """
-
-    class BrandType(models.TextChoices):
-        ACCESSORIES = 'accessories', 'Accessories'
-        GADGETS = 'gadgets', 'Gadgets'
-
-    store = models.ForeignKey(
-        Store,
-        on_delete=models.CASCADE,
-        related_name="brands",
-    )
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=100)
-    image = models.ImageField(
-        upload_to='brands/',
-        help_text="Brand logo or image to display on the brand card"
-    )
-    redirect_url = models.URLField(
-        max_length=500,
-        help_text="URL to redirect users when they click on the brand card"
-    )
-    brand_type = models.CharField(
-        max_length=20,
-        choices=BrandType.choices,
-        help_text="Determines which section the brand appears in on the homepage"
-    )
-    order = models.PositiveIntegerField(
-        default=0,
-        help_text="Display order within the brand type section (lower numbers appear first)"
-    )
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Whether this brand is visible on the site"
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ['brand_type', 'order', 'name']
-        verbose_name = 'Brand'
-        verbose_name_plural = 'Brands'
-        constraints = [
-            models.UniqueConstraint(
-                fields=["store", "slug"],
-                name="uniq_brand_store_slug",
-            ),
-        ]
-
-    def __str__(self):
-        return f"{self.name} ({self.get_brand_type_display()})"

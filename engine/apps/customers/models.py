@@ -32,6 +32,11 @@ class Customer(models.Model):
         blank=True,
         related_name='+',
     )
+    extra_data = models.JSONField(
+        blank=True,
+        default=dict,
+        help_text="Dynamic extra fields per extra_field_schema.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

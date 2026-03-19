@@ -35,6 +35,11 @@ class Store(models.Model):
     contact_email = models.EmailField(blank=True)
     phone = models.CharField(max_length=50, blank=True)
     address = models.TextField(blank=True)
+    brand_showcase = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Homepage brand cards: name, slug, image_url, redirect_url, brand_type, order, is_active",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -64,6 +69,11 @@ class StoreSettings(models.Model):
     low_stock_threshold = models.PositiveIntegerField(
         default=5,
         help_text="Default low-stock alert threshold for inventory.",
+    )
+    extra_field_schema = models.JSONField(
+        blank=True,
+        default=list,
+        help_text="Extra field definitions for product, customer, order: [{id, entityType, name, fieldType, required, order, options}]",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

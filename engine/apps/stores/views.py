@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from rest_framework import viewsets, mixins, permissions, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from config.permissions import IsPlatformRequest, IsStoreAdmin, IsStoreStaff
@@ -166,4 +167,16 @@ class StoreSettingsViewSet(
             raise permissions.PermissionDenied("No active store.")
         settings_obj, _ = StoreSettings.objects.get_or_create(store=store)
         return settings_obj
+
+    @action(detail=False, methods=["get", "patch"])
+    def current(self, request):
+        """GET/PATCH store settings for the active store (no pk required)."""
+        obj = self.get_object()
+        if request.method == "GET":
+            serializer = self.get_serializer(obj)
+            return Response(serializer.data)
+        serializer = self.get_serializer(obj, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
 
