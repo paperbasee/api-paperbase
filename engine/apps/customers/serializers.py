@@ -6,10 +6,11 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerAddress
         fields = [
-            'id', 'label', 'name', 'phone', 'address_line1', 'address_line2',
+            'public_id', 'label', 'name', 'phone', 'address_line1', 'address_line2',
             'city', 'region', 'postal_code', 'country',
             'is_default_shipping', 'is_default_billing', 'created_at',
         ]
+        read_only_fields = ['public_id', 'created_at']
 
 
 class CustomerProfileSerializer(serializers.ModelSerializer):

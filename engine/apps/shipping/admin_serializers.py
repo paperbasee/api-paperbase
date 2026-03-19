@@ -7,7 +7,7 @@ class AdminShippingZoneSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShippingZone
         fields = [
-            "id",
+            "public_id",
             "name",
             "delivery_areas",
             "districts",
@@ -15,7 +15,7 @@ class AdminShippingZoneSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]
 
 
 class AdminShippingMethodSerializer(serializers.ModelSerializer):
@@ -29,7 +29,7 @@ class AdminShippingMethodSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShippingMethod
         fields = [
-            "id",
+            "public_id",
             "name",
             "method_type",
             "is_active",
@@ -38,14 +38,14 @@ class AdminShippingMethodSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]
 
 
 class AdminShippingRateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ShippingRate
         fields = [
-            "id",
+            "public_id",
             "shipping_method",
             "shipping_zone",
             "rate_type",
@@ -54,5 +54,5 @@ class AdminShippingRateSerializer(serializers.ModelSerializer):
             "price",
             "is_active",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["public_id"]
 

@@ -16,6 +16,7 @@ from .admin_serializers import (
 class AdminCustomerViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     queryset = Customer.objects.select_related("user").prefetch_related("addresses").all()
+    lookup_field = 'public_id'
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -70,6 +71,7 @@ class AdminCustomerAddressViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     serializer_class = AdminCustomerAddressSerializer
     queryset = CustomerAddress.objects.select_related("customer").all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()

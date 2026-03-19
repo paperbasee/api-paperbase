@@ -19,6 +19,7 @@ class AdminSupportTicketViewSet(
     permission_classes = [IsDashboardUser]
     serializer_class = AdminSupportTicketSerializer
     queryset = SupportTicket.objects.prefetch_related("attachments").all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()

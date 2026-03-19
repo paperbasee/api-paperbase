@@ -15,6 +15,7 @@ class AdminBannerViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminBannerSerializer
     queryset = Banner.objects.all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()

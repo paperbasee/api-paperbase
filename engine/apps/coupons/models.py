@@ -1,10 +1,16 @@
 from django.db import models
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 
 class Coupon(models.Model):
     """Discount coupon for promotions."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. cpn_xxx).",
+    )
 
     class DiscountType(models.TextChoices):
         PERCENTAGE = "percentage", "Percentage"
@@ -43,6 +49,11 @@ class Coupon(models.Model):
             )
         ]
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("coupon")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.code} ({self.get_discount_type_display()})"

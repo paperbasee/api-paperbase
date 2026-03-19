@@ -7,9 +7,11 @@ User = get_user_model()
 
 
 class ActivityActorSerializer(serializers.ModelSerializer):
+    full_name = serializers.CharField(read_only=True)
+
     class Meta:
         model = User
-        fields = ["id", "username", "email"]
+        fields = ["public_id", "email", "full_name"]
 
 
 class AdminActivityLogSerializer(serializers.ModelSerializer):

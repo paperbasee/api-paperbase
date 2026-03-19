@@ -16,7 +16,7 @@ class AdminSupportTicketSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportTicket
         fields = [
-            "id",
+            "public_id",
             "store_id",
             "name",
             "email",
@@ -32,4 +32,4 @@ class AdminSupportTicketSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "store_id", "created_at", "updated_at", "attachments"]
+        read_only_fields = ["public_id", "store_id", "created_at", "updated_at", "attachments"]

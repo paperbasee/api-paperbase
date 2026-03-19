@@ -51,13 +51,17 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
     store: Optional[Store] = None
     membership: Optional[StoreMembership] = None
 
-    # 1) Explicit header
+    # 1) Explicit header — try public_id first, fall back to integer PK for backward compat
     header_store_id = request.headers.get("X-Store-ID") or request.headers.get("x-store-id")
     if header_store_id:
         try:
-            store = Store.objects.get(pk=header_store_id, is_active=True)
+            store = Store.objects.get(public_id=header_store_id, is_active=True)
         except (Store.DoesNotExist, ValueError):
-            store = None
+            # Backward-compat: allow integer PK during frontend migration window
+            try:
+                store = Store.objects.get(pk=int(header_store_id), is_active=True)
+            except (Store.DoesNotExist, ValueError, TypeError):
+                store = None
 
     # 2) JWT claim `active_store_id`
     # In DRF SimpleJWT, the validated token is available as `request.auth`.
@@ -65,9 +69,13 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
         active_store_id = request.auth.get("active_store_id")  # type: ignore[union-attr]
         if active_store_id:
             try:
-                store = Store.objects.get(pk=active_store_id, is_active=True)
+                store = Store.objects.get(public_id=active_store_id, is_active=True)
             except (Store.DoesNotExist, ValueError):
-                store = None
+                # Backward-compat: allow integer PK during frontend migration window
+                try:
+                    store = Store.objects.get(pk=int(active_store_id), is_active=True)
+                except (Store.DoesNotExist, ValueError, TypeError):
+                    store = None
 
     # 3) Fallback to host-resolved store (set by middleware)
     if store is None:

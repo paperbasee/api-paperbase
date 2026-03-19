@@ -15,3 +15,4 @@ class AdminCartViewSet(
     queryset = Cart.objects.select_related('user').prefetch_related(
         'items__product',
     ).all()
+    lookup_field = 'public_id'

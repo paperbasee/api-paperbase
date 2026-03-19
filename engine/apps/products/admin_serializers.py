@@ -64,8 +64,8 @@ def ensure_unique_variant_sku(*, product: Product, base_sku: str, exclude_id: in
 class AdminProductImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductImage
-        fields = ['id', 'product', 'image', 'order']
-        read_only_fields = ['id']
+        fields = ['public_id', 'product', 'image', 'order']
+        read_only_fields = ['public_id']
 
     def validate(self, attrs):
         product = attrs.get('product')
@@ -93,7 +93,7 @@ class AdminProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'brand', 'slug', 'price', 'original_price',
+            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
             'image_url', 'badge', 'category', 'category_name',
             'stock', 'variant_count', 'total_stock',
             'is_featured', 'is_active', 'extra_data', 'created_at',
@@ -138,14 +138,14 @@ class AdminProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'brand', 'slug', 'price', 'original_price',
+            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
             'image', 'badge', 'category', 'category_name',
             'description',
             'stock', 'variant_count', 'total_stock',
             'is_featured', 'is_active', 'extra_data', 'images',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'slug', 'created_at', 'updated_at', 'variant_count', 'total_stock']
+        read_only_fields = ['id', 'public_id', 'slug', 'created_at', 'updated_at', 'variant_count', 'total_stock']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -182,10 +182,10 @@ class AdminParentCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'image',
+            'public_id', 'name', 'slug', 'description', 'image',
             'order', 'is_active', 'child_count',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['public_id']
 
     def get_child_count(self, obj):
         return obj.children.count()
@@ -204,11 +204,11 @@ class AdminCategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'id', 'name', 'slug', 'description', 'image',
+            'public_id', 'name', 'slug', 'description', 'image',
             'parent', 'parent_name',
             'order', 'is_active', 'product_count',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['public_id']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -230,8 +230,8 @@ class AdminProductAttributeValueSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductAttributeValue
-        fields = ["id", "attribute", "attribute_name", "value", "order"]
-        read_only_fields = ["id", "attribute_name"]
+        fields = ["public_id", "attribute", "attribute_name", "value", "order"]
+        read_only_fields = ["public_id", "attribute_name"]
 
 
 class AdminProductAttributeSerializer(serializers.ModelSerializer):
@@ -239,8 +239,8 @@ class AdminProductAttributeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductAttribute
-        fields = ["id", "name", "slug", "order", "values"]
-        read_only_fields = ["id"]
+        fields = ["public_id", "name", "slug", "order", "values"]
+        read_only_fields = ["public_id"]
 
     def validate_slug(self, value):
         if value is None:
@@ -295,7 +295,7 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
     class Meta:
         model = ProductVariant
         fields = [
-            "id",
+            "public_id",
             "product",
             "sku",
             "price_override",
@@ -306,7 +306,7 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "option_labels", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "option_labels", "created_at", "updated_at"]
         # DRF auto-adds UniqueTogetherValidator for the model constraint (product, sku) and
         # enforces both fields as required on create. We generate SKU when omitted, so we
         # disable auto validators and keep our own uniqueness checks + generation.

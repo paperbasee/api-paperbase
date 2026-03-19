@@ -2,10 +2,15 @@ from django.conf import settings
 from django.db import models
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 
 class Customer(models.Model):
     """Profile and preferences for a store customer (per-store profile for a user)."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. cus_xxx).",
+    )
     store = models.ForeignKey(
         Store,
         on_delete=models.CASCADE,
@@ -48,12 +53,22 @@ class Customer(models.Model):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("customer")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return str(self.user)
 
 
 class CustomerAddress(models.Model):
     """Saved address for a customer (shipping/billing)."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. adr_xxx).",
+    )
 
     class Label(models.TextChoices):
         HOME = 'home', 'Home'
@@ -81,6 +96,11 @@ class CustomerAddress(models.Model):
 
     class Meta:
         ordering = ['customer', 'label']
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("address")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.customer} - {self.label}"

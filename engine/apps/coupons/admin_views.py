@@ -13,6 +13,7 @@ class AdminCouponViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     serializer_class = AdminCouponSerializer
     queryset = Coupon.objects.all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()

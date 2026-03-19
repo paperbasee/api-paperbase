@@ -2,7 +2,6 @@
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib import messages
 from django.utils.html import format_html
 
@@ -55,7 +54,7 @@ class SubscriptionAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "plan", "source")
-    search_fields = ("user__username", "user__email")
+    search_fields = ("user__email",)
     ordering = ("-created_at",)
     readonly_fields = (
         "user",
@@ -110,7 +109,7 @@ class PaymentAdmin(admin.ModelAdmin):
         "created_at",
     )
     list_filter = ("status", "provider")
-    search_fields = ("user__username", "user__email", "transaction_id")
+    search_fields = ("user__email", "transaction_id")
     ordering = ("-created_at",)
     readonly_fields = ("created_at",)
     list_select_related = ("user", "subscription")
@@ -122,59 +121,114 @@ class PaymentAdmin(admin.ModelAdmin):
 # ---------------------------------------------------------------------------
 
 
-def _get_premium_plan():
-    return Plan.objects.filter(name="premium", is_active=True).first()
+def _get_plan(name):
+    plan = Plan.objects.filter(name=name, is_active=True).first()
+    return plan
 
 
-@admin.action(description="Activate Premium (manual)")
+def _activate_plan_for_users(modeladmin, request, queryset, plan_name, duration_days, source, label):
+    plan = _get_plan(plan_name)
+    if not plan:
+        modeladmin.message_user(
+            request,
+            f'"{plan_name}" plan not found or inactive. Create it first.',
+            messages.ERROR,
+        )
+        return
+    success = 0
+    for user in queryset:
+        try:
+            activate_subscription(
+                user=user,
+                plan=plan,
+                billing_cycle="monthly",
+                duration_days=duration_days,
+                source=source,
+                amount=0,
+                provider="manual",
+            )
+            success += 1
+        except Exception as e:
+            modeladmin.message_user(request, f"Failed for {user}: {e}", messages.ERROR)
+    if success:
+        modeladmin.message_user(request, f"{label} for {success} user(s).", messages.SUCCESS)
+
+
+@admin.action(description="Grant Basic plan (30 days)")
+def grant_basic_action(modeladmin, request, queryset):
+    _activate_plan_for_users(
+        modeladmin, request, queryset,
+        plan_name="basic",
+        duration_days=30,
+        source="manual",
+        label="Basic plan activated",
+    )
+
+
+@admin.action(description="Grant Premium plan (30 days)")
 def activate_premium_action(modeladmin, request, queryset):
-    plan = _get_premium_plan()
-    if not plan:
-        modeladmin.message_user(request, "Premium plan not found. Create it first.", messages.ERROR)
-        return
-    success = 0
-    for user in queryset:
-        try:
-            activate_subscription(
-                user=user,
-                plan=plan,
-                billing_cycle="monthly",
-                duration_days=30,
-                source="manual",
-                amount=0,
-                provider="manual",
-            )
-            success += 1
-        except Exception as e:
-            modeladmin.message_user(request, f"Failed for {user}: {e}", messages.ERROR)
-    if success:
-        modeladmin.message_user(request, f"Activated Premium for {success} user(s).", messages.SUCCESS)
+    _activate_plan_for_users(
+        modeladmin, request, queryset,
+        plan_name="premium",
+        duration_days=30,
+        source="manual",
+        label="Premium plan activated",
+    )
 
 
-@admin.action(description="Grant Free Trial (14 days)")
+@admin.action(description="Grant Free Trial — Premium (14 days)")
 def grant_free_trial_action(modeladmin, request, queryset):
-    plan = _get_premium_plan()
-    if not plan:
-        modeladmin.message_user(request, "Premium plan not found. Create it first.", messages.ERROR)
-        return
-    success = 0
+    _activate_plan_for_users(
+        modeladmin, request, queryset,
+        plan_name="premium",
+        duration_days=14,
+        source="trial",
+        label="14-day Premium trial granted",
+    )
+
+
+@admin.action(description="Extend current subscription by 30 days")
+def extend_30_days_action(modeladmin, request, queryset):
+    from .services import get_active_subscription
+    success, skipped = 0, 0
     for user in queryset:
+        sub = get_active_subscription(user)
+        if not sub:
+            skipped += 1
+            continue
         try:
-            activate_subscription(
-                user=user,
-                plan=plan,
-                billing_cycle="monthly",
-                duration_days=14,
-                source="trial",
-                amount=0,
-                provider="manual",
-            )
+            extend_subscription(sub, days=30)
             success += 1
         except Exception as e:
             modeladmin.message_user(request, f"Failed for {user}: {e}", messages.ERROR)
     if success:
-        modeladmin.message_user(request, f"Granted 14-day trial for {success} user(s).", messages.SUCCESS)
+        modeladmin.message_user(request, f"Extended subscription by 30 days for {success} user(s).", messages.SUCCESS)
+    if skipped:
+        modeladmin.message_user(request, f"{skipped} user(s) had no active subscription — skipped.", messages.WARNING)
 
+
+@admin.action(description="Revoke current plan (cancel subscription)")
+def revoke_plan_action(modeladmin, request, queryset):
+    from django.utils import timezone
+    success, skipped = 0, 0
+    for user in queryset:
+        updated = Subscription.objects.filter(
+            user=user,
+            status=Subscription.Status.ACTIVE,
+        ).update(status=Subscription.Status.CANCELED, updated_at=timezone.now())
+        if updated:
+            success += 1
+        else:
+            skipped += 1
+    if success:
+        modeladmin.message_user(request, f"Revoked active subscription for {success} user(s).", messages.SUCCESS)
+    if skipped:
+        modeladmin.message_user(request, f"{skipped} user(s) had no active subscription — skipped.", messages.WARNING)
+
+
+# ---------------------------------------------------------------------------
+# Extend action on Subscription list
+# ---------------------------------------------------------------------------
 
 @admin.action(description="Extend subscription by 30 days")
 def extend_subscription_action(modeladmin, request, queryset):
@@ -189,13 +243,13 @@ def extend_subscription_action(modeladmin, request, queryset):
         modeladmin.message_user(request, f"Extended {success} subscription(s) by 30 days.", messages.SUCCESS)
 
 
-# Add extend action to Subscription admin
 SubscriptionAdmin.actions = [extend_subscription_action]
 
-# Custom User Admin with billing actions
-admin.site.unregister(User)
-
-
-@admin.register(User)
-class CustomUserAdmin(BaseUserAdmin):
-    actions = [activate_premium_action, grant_free_trial_action]
+# Exported to engine.apps.accounts.admin — attached to the Users section
+billing_user_actions = [
+    grant_basic_action,
+    activate_premium_action,
+    grant_free_trial_action,
+    extend_30_days_action,
+    revoke_plan_action,
+]

@@ -1,9 +1,16 @@
 from django.conf import settings
 from django.db import models
 
+from engine.core.ids import generate_public_id
+
 
 class Review(models.Model):
     """Product review with star rating and optional moderation."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. rev_xxx).",
+    )
 
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
@@ -37,6 +44,11 @@ class Review(models.Model):
     class Meta:
         ordering = ['-created_at']
         unique_together = [['product', 'user']]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("review")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Review {self.product.name} by {self.user_id} - {self.rating}"

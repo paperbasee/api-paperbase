@@ -40,6 +40,7 @@ class AdminShippingZoneViewSet(
 ):
     serializer_class = AdminShippingZoneSerializer
     queryset = ShippingZone.objects.all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         store = self._get_store_or_error()
@@ -80,6 +81,7 @@ class AdminShippingMethodViewSet(
 ):
     serializer_class = AdminShippingMethodSerializer
     queryset = ShippingMethod.objects.prefetch_related("zones").all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         store = self._get_store_or_error()
@@ -127,6 +129,7 @@ class AdminShippingRateViewSet(
 ):
     serializer_class = AdminShippingRateSerializer
     queryset = ShippingRate.objects.select_related("shipping_method", "shipping_zone").all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         store = self._get_store_or_error()

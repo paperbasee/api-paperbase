@@ -3,11 +3,16 @@ from decimal import Decimal
 from django.db import models
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 
 class StoreAnalytics(models.Model):
     """Daily aggregated store metrics for reporting."""
 
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. anl_xxx).",
+    )
     store = models.ForeignKey(
         Store,
         on_delete=models.CASCADE,
@@ -39,6 +44,11 @@ class StoreAnalytics(models.Model):
             )
         ]
         ordering = ["-period_date"]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("analytics")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.store} - {self.period_date}"

@@ -20,7 +20,7 @@ class ProductImageSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductImage
-        fields = ['id', 'url', 'order']
+        fields = ['public_id', 'url', 'order']
 
     def get_url(self, obj):
         return _image_url(obj.image, self.context.get('request'))
@@ -33,7 +33,7 @@ class ProductVariantPublicSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ProductVariant
-        fields = ['id', 'sku', 'stock_quantity', 'is_active', 'price', 'options']
+        fields = ['public_id', 'sku', 'stock_quantity', 'is_active', 'price', 'options']
 
     def get_price(self, obj):
         return str(obj.effective_price)
@@ -62,7 +62,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'brand', 'price', 'originalPrice', 'image',
+            'id', 'public_id', 'name', 'brand', 'price', 'originalPrice', 'image',
             'badge', 'category', 'slug', 'stock', 'totalStock', 'variantCount', 'extra_data',
         ]
 
@@ -108,7 +108,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'name', 'brand', 'slug', 'price', 'originalPrice', 'image', 'images',
+            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'originalPrice', 'image', 'images',
             'badge', 'category', 'description',
             'is_featured', 'created_at', 'stock', 'totalStock', 'variantCount', 'variants',
             'extra_data',
@@ -144,14 +144,11 @@ class ProductDetailSerializer(serializers.ModelSerializer):
 class CategorySerializer(serializers.ModelSerializer):
     """Serializer for category tree nodes."""
     image = serializers.SerializerMethodField()
-    parent_id = serializers.PrimaryKeyRelatedField(
-        source="parent",
-        read_only=True,
-    )
+    parent_public_id = serializers.CharField(source="parent.public_id", read_only=True, allow_null=True)
 
     class Meta:
         model = Category
-        fields = ['id', 'name', 'slug', 'image', 'parent_id', 'order']
+        fields = ['public_id', 'name', 'slug', 'image', 'parent_public_id', 'order']
 
     def get_image(self, obj):
         return _image_url(obj.image, self.context.get('request'))

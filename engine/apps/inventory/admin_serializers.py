@@ -17,7 +17,7 @@ class InventoryListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Inventory
         fields = [
-            'id', 'product', 'product_name', 'variant', 'variant_sku',
+            'public_id', 'product', 'product_name', 'variant', 'variant_sku',
             'quantity', 'low_stock_threshold', 'is_tracked', 'updated_at', 'is_low',
         ]
 

@@ -149,3 +149,20 @@ ADMIN_URL_PATH = "admin/"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# ---------------------------------------------------------------------------
+# Custom user model
+# ---------------------------------------------------------------------------
+AUTH_USER_MODEL = "accounts.User"
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+# Console backend for development — prints emails to stdout.
+# In production, swap for SMTP or a transactional provider (SES, SendGrid, etc.)
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@yourplatform.com")
+
+# Base URL sent in password-reset / email-verification links.
+# Frontend must handle /reset-password?uid=...&token=... and /verify-email?uid=...&token=...
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")

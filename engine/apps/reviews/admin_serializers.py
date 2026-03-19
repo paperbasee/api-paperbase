@@ -10,7 +10,7 @@ class AdminReviewSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = [
-            "id",
+            "public_id",
             "product",
             "product_name",
             "user",
@@ -22,4 +22,4 @@ class AdminReviewSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]

@@ -7,7 +7,7 @@ class AdminCustomerAddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomerAddress
         fields = [
-            "id",
+            "public_id",
             "label",
             "name",
             "phone",
@@ -21,7 +21,7 @@ class AdminCustomerAddressSerializer(serializers.ModelSerializer):
             "is_default_billing",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["public_id", "created_at"]
 
 
 class AdminCustomerSerializer(serializers.ModelSerializer):
@@ -32,7 +32,7 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            "id",
+            "public_id",
             "store",
             "user",
             "user_email",
@@ -46,7 +46,7 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]
 
 
 class AdminCustomerListSerializer(serializers.ModelSerializer):
@@ -56,7 +56,7 @@ class AdminCustomerListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Customer
         fields = [
-            "id",
+            "public_id",
             "user",
             "user_email",
             "user_username",

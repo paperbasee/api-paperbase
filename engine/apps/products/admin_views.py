@@ -43,7 +43,7 @@ class AdminProductViewSet(viewsets.ModelViewSet):
         )
         .all()
     )
-    lookup_field = 'pk'
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -129,6 +129,7 @@ class AdminProductImageViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminProductImageSerializer
     queryset = ProductImage.objects.select_related('product').all()
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -163,6 +164,7 @@ class AdminParentCategoryViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminParentCategorySerializer
     queryset = Category.objects.filter(parent__isnull=True).order_by('order', 'name')
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -221,6 +223,7 @@ class AdminCategoryViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminCategorySerializer
     queryset = Category.objects.filter(parent__isnull=False).select_related('parent').order_by('parent', 'order', 'name')
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -288,7 +291,7 @@ class AdminProductVariantViewSet(viewsets.ModelViewSet):
         .prefetch_related("attribute_values__attribute_value__attribute")
         .all()
     )
-    lookup_field = "pk"
+    lookup_field = "public_id"
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -372,6 +375,7 @@ class AdminProductAttributeViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     serializer_class = AdminProductAttributeSerializer
     queryset = ProductAttribute.objects.prefetch_related("values").order_by("order", "name")
+    lookup_field = "public_id"
 
     def perform_create(self, serializer):
         instance = serializer.save()
@@ -412,6 +416,7 @@ class AdminProductAttributeValueViewSet(viewsets.ModelViewSet):
     queryset = ProductAttributeValue.objects.select_related("attribute").order_by(
         "attribute", "order", "value"
     )
+    lookup_field = "public_id"
 
     def get_queryset(self):
         qs = super().get_queryset()

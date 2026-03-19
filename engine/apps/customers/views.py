@@ -49,9 +49,10 @@ class CustomerAddressListCreateView(ListCreateAPIView):
 
 
 class CustomerAddressDetailView(RetrieveUpdateDestroyAPIView):
-    """GET/PUT/PATCH/DELETE /api/v1/customers/addresses/<id>/"""
+    """GET/PUT/PATCH/DELETE /api/v1/customers/addresses/<public_id>/"""
     permission_classes = [IsAuthenticated]
     serializer_class = CustomerAddressSerializer
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         customer = get_or_create_customer_for_request(self.request)

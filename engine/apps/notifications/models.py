@@ -1,12 +1,19 @@
 from django.conf import settings
 from django.db import models
 
+from engine.core.ids import generate_public_id
+
 
 class SystemNotification(models.Model):
     """
     Admin dashboard notification for events (new order, low stock, new customer, etc.).
     When user is null, the notification is global for all staff.
     """
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. snt_xxx).",
+    )
+
     class MessageType(models.TextChoices):
         NEW_ORDER = 'new_order', 'New order'
         NEW_CUSTOMER = 'new_customer', 'New customer'
@@ -32,12 +39,22 @@ class SystemNotification(models.Model):
     class Meta:
         ordering = ['-created_at']
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("sysnotification")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.get_message_type_display()}: {self.title}"
 
 
 class Notification(models.Model):
     """Notification banner for frontend display."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. ntf_xxx).",
+    )
 
     class NotificationType(models.TextChoices):
         BANNER = 'banner', 'Banner'
@@ -63,6 +80,11 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"{self.text[:50]}... ({'Active' if self.is_active else 'Inactive'})"
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("notification")
+        super().save(*args, **kwargs)
 
     @property
     def is_currently_active(self):

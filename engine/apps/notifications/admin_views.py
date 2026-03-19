@@ -17,12 +17,14 @@ class AdminSystemNotificationViewSet(
     permission_classes = [IsDashboardUser]
     serializer_class = AdminSystemNotificationSerializer
     queryset = SystemNotification.objects.all().order_by('-created_at')
+    lookup_field = 'public_id'
 
 
 class AdminNotificationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     serializer_class = AdminNotificationSerializer
     queryset = Notification.objects.all()
+    lookup_field = 'public_id'
 
     def perform_create(self, serializer):
         instance = serializer.save()

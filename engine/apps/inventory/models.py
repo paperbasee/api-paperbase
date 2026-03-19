@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from engine.core.ids import generate_public_id
+
 
 class Inventory(models.Model):
     """
@@ -8,6 +10,10 @@ class Inventory(models.Model):
     When variant is null, this tracks the product's own stock (simple products).
     When variant is set, this tracks that variant's stock.
     """
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. inv_xxx).",
+    )
     product = models.ForeignKey(
         'products.Product',
         on_delete=models.CASCADE,
@@ -42,6 +48,11 @@ class Inventory(models.Model):
         if self.variant_id:
             return f"{self.product.name} / {self.variant.sku or self.variant_id}: {self.quantity}"
         return f"{self.product.name}: {self.quantity}"
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("inventory")
+        super().save(*args, **kwargs)
 
     def is_low_stock(self):
         return self.is_tracked and self.quantity <= self.low_stock_threshold

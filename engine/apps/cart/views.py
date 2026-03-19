@@ -72,7 +72,7 @@ class CartUpdateView(APIView):
         quantity = request.data.get('quantity')
         if quantity is None or not isinstance(quantity, int) or quantity < 1:
             return Response({'quantity': ['Must be a positive integer.']}, status=400)
-        item = CartItem.objects.filter(cart=cart, id=item_id).first()
+        item = CartItem.objects.filter(cart=cart, public_id=item_id).first()
         if not item:
             return Response({'detail': 'Not found.'}, status=404)
         item.quantity = quantity
@@ -86,7 +86,7 @@ class CartRemoveView(APIView):
 
     def post(self, request, item_id):
         cart = get_or_create_cart(request)
-        deleted, _ = CartItem.objects.filter(cart=cart, id=item_id).delete()
+        deleted, _ = CartItem.objects.filter(cart=cart, public_id=item_id).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 
 

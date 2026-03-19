@@ -27,6 +27,6 @@ class StoreSettingsAdmin(admin.ModelAdmin):
 class StoreMembershipAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "store", "role", "is_active", "created_at")
     list_filter = ("role", "is_active", "created_at")
-    search_fields = ("user__username", "user__email", "store__name", "store__domain")
-    autocomplete_fields = ("user", "store")
+    search_fields = ("user__email", "store__name", "store__domain")
+    raw_id_fields = ("user", "store")
 

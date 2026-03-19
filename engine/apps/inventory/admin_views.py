@@ -11,6 +11,7 @@ from .services import adjust_stock
 class AdminInventoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     queryset = Inventory.objects.select_related('product', 'variant').order_by('product__name')
+    lookup_field = 'public_id'
 
     def get_serializer_class(self):
         if self.action == 'retrieve':

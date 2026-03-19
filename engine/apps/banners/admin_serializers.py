@@ -7,7 +7,7 @@ class AdminBannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = [
-            "id",
+            "public_id",
             "title",
             "image",
             "link_url",
@@ -19,4 +19,4 @@ class AdminBannerSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]

@@ -3,9 +3,16 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
+from engine.core.ids import generate_public_id
+
 
 class Plan(models.Model):
     """Subscription plan defining limits and features."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. pln_xxx).",
+    )
 
     class BillingCycle(models.TextChoices):
         MONTHLY = "monthly", "Monthly"
@@ -37,12 +44,22 @@ class Plan(models.Model):
             models.Index(fields=["is_active"]),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("plan")
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"{self.name} ({self.get_billing_cycle_display()})"
 
 
 class Subscription(models.Model):
     """User subscription to a plan. Only one active subscription per user at a time."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. sub_xxx).",
+    )
 
     class Status(models.TextChoices):
         ACTIVE = "active", "Active"
@@ -96,6 +113,11 @@ class Subscription(models.Model):
             models.Index(fields=["user", "status"]),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("subscription")
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"{self.user} - {self.plan} ({self.status})"
 
@@ -123,6 +145,11 @@ class Subscription(models.Model):
 
 class Payment(models.Model):
     """Payment record for subscription or other charges. Stores all attempts including failed."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. pay_xxx).",
+    )
 
     class Status(models.TextChoices):
         SUCCESS = "success", "Success"
@@ -180,6 +207,11 @@ class Payment(models.Model):
             models.Index(fields=["provider"]),
             models.Index(fields=["created_at"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("payment")
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.user} - {self.amount} {self.currency} ({self.status})"

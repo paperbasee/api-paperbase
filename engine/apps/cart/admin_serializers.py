@@ -10,10 +10,10 @@ class AdminCartItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = CartItem
         fields = [
-            'id', 'product', 'product_name', 'product_brand', 'quantity', 'size',
+            'public_id', 'product', 'product_name', 'product_brand', 'quantity', 'size',
             'created_at', 'updated_at',
         ]
-        read_only_fields = fields
+        read_only_fields = ['public_id', 'product_name', 'product_brand', 'created_at', 'updated_at']
 
 
 class AdminCartSerializer(serializers.ModelSerializer):
@@ -22,6 +22,6 @@ class AdminCartSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cart
         fields = [
-            'id', 'items', 'created_at', 'updated_at',
+            'public_id', 'items', 'created_at', 'updated_at',
         ]
-        read_only_fields = fields
+        read_only_fields = ['public_id', 'created_at', 'updated_at']

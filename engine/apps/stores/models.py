@@ -1,10 +1,16 @@
 from django.conf import settings
 from django.db import models
 
+from engine.core.ids import generate_public_id
+
 
 class Store(models.Model):
     """Tenant store for the BaaS platform. Includes branding for dashboard and storefront."""
 
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier used in APIs and URLs (e.g. str_xxx).",
+    )
     name = models.CharField(max_length=255)
     store_type = models.CharField(
         max_length=60,
@@ -48,6 +54,11 @@ class Store(models.Model):
             models.Index(fields=["domain"]),
             models.Index(fields=["is_active", "created_at"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("store")
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"{self.name}" + (f" ({self.domain})" if self.domain else "")

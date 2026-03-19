@@ -22,7 +22,7 @@ class StoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Store
         fields = [
-            "id",
+            "public_id",
             "name",
             "store_type",
             "domain",
@@ -34,13 +34,14 @@ class StoreSerializer(serializers.ModelSerializer):
             "updated_at",
             "settings",
         ]
-        read_only_fields = ["id", "created_at", "updated_at", "settings"]
+        read_only_fields = ["public_id", "created_at", "updated_at", "settings"]
 
 
 class StoreMembershipSerializer(serializers.ModelSerializer):
     user_email = serializers.EmailField(source="user.email", read_only=True)
     user_username = serializers.CharField(source="user.username", read_only=True)
     store_name = serializers.CharField(source="store.name", read_only=True)
+    store_public_id = serializers.CharField(source="store.public_id", read_only=True)
 
     class Meta:
         model = StoreMembership
@@ -50,10 +51,11 @@ class StoreMembershipSerializer(serializers.ModelSerializer):
             "user_email",
             "user_username",
             "store",
+            "store_public_id",
             "store_name",
             "role",
             "is_active",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at", "user_email", "user_username", "store_name"]
+        read_only_fields = ["id", "created_at", "user_email", "user_username", "store_name", "store_public_id"]
 

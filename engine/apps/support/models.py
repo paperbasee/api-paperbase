@@ -1,6 +1,7 @@
 from django.db import models
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 
 def support_attachment_upload_to(instance: "SupportTicketAttachment", filename: str) -> str:
@@ -11,6 +12,11 @@ def support_attachment_upload_to(instance: "SupportTicketAttachment", filename: 
 
 class SupportTicket(models.Model):
     """Support ticket submitted by a store visitor/customer."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. tkt_xxx).",
+    )
 
     class Status(models.TextChoices):
         OPEN = "open", "Open"
@@ -54,6 +60,11 @@ class SupportTicket(models.Model):
             models.Index(fields=["store", "status", "-created_at"]),
             models.Index(fields=["store", "priority", "-created_at"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("ticket")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         base = self.subject or "Support ticket"

@@ -36,4 +36,4 @@ class SupportTicketCreateSerializer(serializers.ModelSerializer):
 class SupportTicketPublicResponseSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportTicket
-        fields = ["id", "created_at", "status"]
+        fields = ["public_id", "created_at", "status"]

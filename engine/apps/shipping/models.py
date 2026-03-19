@@ -3,10 +3,15 @@ from decimal import Decimal
 from django.db import models
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 
 class ShippingZone(models.Model):
     """Region (Bangladesh-focused) for shipping rules."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. szn_xxx).",
+    )
     store = models.ForeignKey(
         Store,
         on_delete=models.CASCADE,
@@ -36,12 +41,22 @@ class ShippingZone(models.Model):
             models.UniqueConstraint(fields=["store", "name"], name="uniq_shipping_zone_store_name"),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("zone")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
 
 class ShippingMethod(models.Model):
     """Carrier/method (e.g. standard, express, pickup)."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. smt_xxx).",
+    )
 
     class MethodType(models.TextChoices):
         STANDARD = 'standard', 'Standard'
@@ -76,12 +91,22 @@ class ShippingMethod(models.Model):
             models.UniqueConstraint(fields=["store", "name"], name="uniq_shipping_method_store_name"),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("method")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
 
 class ShippingRate(models.Model):
     """Pricing rule for a method in a zone (flat, weight-based, or order-total-based)."""
+
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. srt_xxx).",
+    )
 
     class RateType(models.TextChoices):
         FLAT = 'flat', 'Flat rate'
@@ -121,6 +146,11 @@ class ShippingRate(models.Model):
                 name="uniq_shipping_rate_rule",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("rate")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.shipping_method.name} / {self.shipping_zone.name}: {self.price}"

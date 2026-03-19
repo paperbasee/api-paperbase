@@ -2,6 +2,7 @@ import uuid
 from django.db import models  # type: ignore[import-not-found]
 
 from engine.apps.stores.models import Store
+from engine.core.ids import generate_public_id
 
 try:
     # Import at module level so tooling resolves it consistently.
@@ -20,6 +21,10 @@ class Category(models.Model):
     category, allowing arbitrary depth (e.g. Electronics -> Phones -> Android).
     """
 
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier used in APIs and URLs (e.g. cat_xxx).",
+    )
     store = models.ForeignKey(
         Store,
         on_delete=models.CASCADE,
@@ -62,6 +67,11 @@ class Category(models.Model):
             ),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("category")
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return self.name
 
@@ -85,6 +95,10 @@ class Product(models.Model):
         related_name="products",
     )
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Prefixed public identifier for APIs and URLs (e.g. prd_xxx).",
+    )
     name = models.CharField(max_length=255)
     brand = models.CharField(max_length=100, blank=True)
     slug = models.SlugField(max_length=255)
@@ -160,6 +174,8 @@ class Product(models.Model):
             )
 
     def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("product")
         # Auto-generate slug from name - always update when name changes
         from django.utils.text import slugify
 
@@ -190,6 +206,10 @@ class Product(models.Model):
 
 class ProductImage(models.Model):
     """Additional images for product detail gallery."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. img_xxx).",
+    )
     product = models.ForeignKey(
         Product, on_delete=models.CASCADE, related_name='images'
     )
@@ -220,12 +240,21 @@ class ProductImage(models.Model):
                 }
             )
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("image")
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"Image for {self.product_id}"
 
 
 class ProductAttribute(models.Model):
     """Generic attribute type (e.g. Color, Size)."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. atr_xxx).",
+    )
     name = models.CharField(max_length=100)
     slug = models.SlugField(max_length=100, unique=True)
     order = models.PositiveIntegerField(default=0)
@@ -233,12 +262,21 @@ class ProductAttribute(models.Model):
     class Meta:
         ordering = ['order']
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("attribute")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
 
 class ProductAttributeValue(models.Model):
     """Specific value for an attribute (e.g. Red, M)."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. atv_xxx).",
+    )
     attribute = models.ForeignKey(
         ProductAttribute,
         on_delete=models.CASCADE,
@@ -251,12 +289,21 @@ class ProductAttributeValue(models.Model):
         ordering = ['attribute', 'order']
         unique_together = [['attribute', 'value']]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("attrvalue")
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.attribute.name}: {self.value}"
 
 
 class ProductVariant(models.Model):
     """Variant of a product (e.g. size/color combination) with its own SKU and optional price/stock."""
+    public_id = models.CharField(
+        max_length=32, unique=True, db_index=True, editable=False,
+        help_text="Non-sequential public identifier (e.g. var_xxx).",
+    )
     product = models.ForeignKey(
         Product,
         on_delete=models.CASCADE,
@@ -283,6 +330,11 @@ class ProductVariant(models.Model):
                 name="uniq_variant_product_sku",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("variant")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.product.name} ({self.sku or self.pk})"

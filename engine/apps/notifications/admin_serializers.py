@@ -6,8 +6,8 @@ from .models import Notification, SystemNotification
 class AdminSystemNotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = SystemNotification
-        fields = ['id', 'user', 'message_type', 'title', 'payload', 'is_read', 'created_at']
-        read_only_fields = ['id', 'user', 'message_type', 'title', 'payload', 'created_at']
+        fields = ['public_id', 'user', 'message_type', 'title', 'payload', 'is_read', 'created_at']
+        read_only_fields = ['public_id', 'user', 'message_type', 'title', 'payload', 'created_at']
 
 
 class AdminNotificationSerializer(serializers.ModelSerializer):
@@ -16,9 +16,9 @@ class AdminNotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = [
-            'id', 'text', 'notification_type', 'is_active',
+            'public_id', 'text', 'notification_type', 'is_active',
             'is_currently_active', 'link', 'link_text',
             'start_date', 'end_date', 'order',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['public_id', 'created_at', 'updated_at']

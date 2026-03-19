@@ -57,9 +57,9 @@ class ShippingOptionsView(APIView):
                     if rate.max_order_total and order_total > rate.max_order_total:
                         continue
                 options.append({
-                    'method_id': method.id,
+                    'method_public_id': method.public_id,
                     'method_name': method.name,
-                    'zone_id': rate.shipping_zone_id,
+                    'zone_public_id': rate.shipping_zone.public_id,
                     'zone_name': rate.shipping_zone.name,
                     'price': rate.price,
                     'rate_type': rate.rate_type,

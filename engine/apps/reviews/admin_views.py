@@ -12,6 +12,7 @@ class AdminReviewViewSet(viewsets.ModelViewSet):
     permission_classes = [IsDashboardUser]
     serializer_class = AdminReviewSerializer
     queryset = Review.objects.select_related("product", "user").order_by("-created_at")
+    lookup_field = 'public_id'
 
     def perform_update(self, serializer):
         instance = serializer.save()
