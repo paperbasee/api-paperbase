@@ -87,6 +87,11 @@ class Order(models.Model):
     delivery_area = models.CharField(max_length=50, blank=True, default='')
     district = models.CharField(max_length=100, blank=True, default='')
     tracking_number = models.CharField(max_length=100, blank=True)
+    courier_provider = models.CharField(max_length=20, blank=True, default="")
+    courier_consignment_id = models.CharField(max_length=100, blank=True, default="")
+    courier_tracking_code = models.CharField(max_length=100, blank=True, default="")
+    courier_status = models.CharField(max_length=50, blank=True, default="")
+    sent_to_courier = models.BooleanField(default=False)
     extra_data = models.JSONField(
         blank=True,
         default=dict,

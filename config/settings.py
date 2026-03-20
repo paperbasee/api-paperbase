@@ -75,6 +75,8 @@ INSTALLED_APPS = [
     "engine.apps.reviews",
     "engine.apps.banners",
     "engine.apps.analytics",
+    "engine.apps.couriers",
+    "engine.apps.marketing_integrations",
 ]
 
 # CORS: allow frontend (e.g. localhost:3000) to call API
@@ -194,6 +196,10 @@ ADMIN_URL_PATH = "admin/"
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Field-level encryption key for courier credentials etc.
+# Falls back to SECRET_KEY via PBKDF2 if not set.
+FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 
 # ---------------------------------------------------------------------------
 # Custom user model

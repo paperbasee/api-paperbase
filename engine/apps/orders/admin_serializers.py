@@ -81,7 +81,10 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
         fields = [
             'public_id', 'order_number', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_name', 'phone', 'district', 'delivery_area',
-            'delivery_area_label', 'items_count', 'extra_data', 'created_at', 'updated_at',
+            'delivery_area_label', 'items_count', 'extra_data',
+            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
+            'courier_status', 'sent_to_courier',
+            'created_at', 'updated_at',
         ]
 
     def get_items_count(self, obj):
@@ -105,10 +108,16 @@ class AdminOrderSerializer(serializers.ModelSerializer):
             'shipping_zone_public_id', 'shipping_method_public_id',
             'shipping_name', 'shipping_address', 'phone',
             'delivery_area', 'delivery_area_label', 'district',
-            'tracking_number', 'extra_data', 'items', 'created_at', 'updated_at',
+            'tracking_number',
+            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
+            'courier_status', 'sent_to_courier',
+            'extra_data', 'items', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'public_id', 'order_number', 'subtotal', 'shipping_cost', 'total', 'created_at', 'updated_at',
+            'public_id', 'order_number', 'subtotal', 'shipping_cost', 'total',
+            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
+            'courier_status', 'sent_to_courier',
+            'created_at', 'updated_at',
         ]
 
 

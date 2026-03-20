@@ -26,6 +26,8 @@ from engine.apps.shipping.admin_views import (
     AdminShippingMethodViewSet,
     AdminShippingRateViewSet,
 )
+from engine.apps.couriers.admin_views import AdminCourierViewSet
+from engine.apps.marketing_integrations.admin_views import AdminMarketingIntegrationViewSet
 
 from .admin_api import (
     DashboardStatsView,
@@ -64,6 +66,8 @@ router.register(r'customer-addresses', AdminCustomerAddressViewSet, basename='ad
 router.register(r'shipping-zones', AdminShippingZoneViewSet, basename='admin-shipping-zones')
 router.register(r'shipping-methods', AdminShippingMethodViewSet, basename='admin-shipping-methods')
 router.register(r'shipping-rates', AdminShippingRateViewSet, basename='admin-shipping-rates')
+router.register(r'couriers', AdminCourierViewSet, basename='admin-couriers')
+router.register(r'marketing-integrations', AdminMarketingIntegrationViewSet, basename='admin-marketing-integrations')
 
 urlpatterns = [
     path('stats/', DashboardStatsView.as_view(), name='admin-dashboard-stats'),
