@@ -40,7 +40,7 @@ class AdminCustomerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="customer",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Customer created: {instance.user.email}",
         )
 
@@ -50,19 +50,19 @@ class AdminCustomerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="customer",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Customer updated: {instance.user.email}",
         )
 
     def perform_destroy(self, instance):
         email = instance.user.email
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="customer",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Customer deleted: {email}",
         )
 

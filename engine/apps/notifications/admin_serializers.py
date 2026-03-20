@@ -4,10 +4,12 @@ from .models import Notification, SystemNotification
 
 
 class AdminSystemNotificationSerializer(serializers.ModelSerializer):
+    user_public_id = serializers.CharField(source="user.public_id", read_only=True, allow_null=True)
+
     class Meta:
         model = SystemNotification
-        fields = ['public_id', 'user', 'message_type', 'title', 'payload', 'is_read', 'created_at']
-        read_only_fields = ['public_id', 'user', 'message_type', 'title', 'payload', 'created_at']
+        fields = ['public_id', 'user_public_id', 'message_type', 'title', 'payload', 'is_read', 'created_at']
+        read_only_fields = ['public_id', 'user_public_id', 'message_type', 'title', 'payload', 'created_at']
 
 
 class AdminNotificationSerializer(serializers.ModelSerializer):

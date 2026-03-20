@@ -124,10 +124,7 @@ class StoreSummarySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StoreMembership
-        fields = ["store_public_id", "store", "role"]
-        extra_kwargs = {
-            "store": {"read_only": True},
-        }
+        fields = ["store_public_id", "role"]
 
 
 class MeSerializer(serializers.ModelSerializer):

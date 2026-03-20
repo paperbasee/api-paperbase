@@ -28,18 +28,18 @@ class AdminReviewViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="review",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Review updated: {instance.product.name} - {instance.rating} stars",
         )
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         product_name = instance.product.name
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="review",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Review deleted: {product_name}",
         )

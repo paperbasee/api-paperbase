@@ -36,14 +36,16 @@ def _delete_storage_files(file_names) -> None:
 
 
 @app.task(name="engine.apps.stores.hard_delete_store")
-def hard_delete_store(job_id: int) -> None:
+def hard_delete_store(job_public_id: str) -> None:
     """
     Irreversibly delete a store and its data while updating job progress.
 
     Idempotent: if the store no longer exists, the job will be marked SUCCESS.
+
+    Note: accepts job_public_id (e.g. dlj_xxx) — do NOT pass internal integer PKs.
     """
 
-    job = StoreDeletionJob.objects.filter(id=job_id).first()
+    job = StoreDeletionJob.objects.filter(public_id=job_public_id).first()
     if not job:
         return
 

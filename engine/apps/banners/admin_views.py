@@ -41,7 +41,7 @@ class AdminBannerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="banner",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Banner created: {instance.title or instance.placement}",
         )
 
@@ -51,18 +51,18 @@ class AdminBannerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="banner",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Banner updated: {instance.title or instance.placement}",
         )
 
     def perform_destroy(self, instance):
         title = instance.title or instance.placement
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="banner",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Banner deleted: {title}",
         )

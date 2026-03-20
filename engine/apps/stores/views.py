@@ -29,6 +29,8 @@ class StoreViewSet(viewsets.ModelViewSet):
 
     serializer_class = StoreSerializer
     queryset = Store.objects.all()
+    # Do NOT expose numeric PKs — use public_id in all URLs
+    lookup_field = 'public_id'
 
     def get_permissions(self):
         if self.action in {"list", "create"}:
@@ -142,6 +144,8 @@ class StoreMembershipViewSet(viewsets.ModelViewSet):
 
     permission_classes = [permissions.IsAuthenticated, IsStoreAdmin]
     serializer_class = StoreMembershipSerializer
+    # Do NOT expose numeric PKs — use public_id in all URLs
+    lookup_field = 'public_id'
 
     def get_queryset(self):
         ctx = get_active_store(self.request)
@@ -268,7 +272,7 @@ class StoreSettingsViewSet(
         # Enqueue irreversible hard delete.
         from .tasks import hard_delete_store
 
-        async_result = hard_delete_store.delay(job.id)
+        async_result = hard_delete_store.delay(job.public_id)
         job.celery_task_id = async_result.id
         job.save(update_fields=["celery_task_id"])
 
@@ -281,7 +285,7 @@ class StoreSettingsViewSet(
 
         return Response(
             {
-                "job_id": job.id,
+                "job_id": job.public_id,
                 "access": str(access),
                 "refresh": str(refresh),
                 "redirect_route": redirect_route,
@@ -299,7 +303,7 @@ class StoreSettingsViewSet(
         if not job_id:
             return Response({"detail": "job_id is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        job = StoreDeletionJob.objects.filter(id=job_id, user=request.user).first()
+        job = StoreDeletionJob.objects.filter(public_id=job_id, user=request.user).first()
         if not job:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
 

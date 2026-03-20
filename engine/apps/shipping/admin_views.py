@@ -90,8 +90,8 @@ class AdminShippingMethodViewSet(
     def get_serializer(self, *args, **kwargs):
         ser = super().get_serializer(*args, **kwargs)
         store = get_active_store(self.request).store
-        if store and hasattr(ser, "fields") and "zone_ids" in ser.fields:
-            ser.fields["zone_ids"].queryset = ShippingZone.objects.filter(store=store)
+        if store and hasattr(ser, "fields") and "zone_public_ids" in ser.fields:
+            ser.fields["zone_public_ids"].child_relation.queryset = ShippingZone.objects.filter(store=store)
         return ser
 
     def perform_create(self, serializer):

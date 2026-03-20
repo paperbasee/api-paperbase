@@ -38,7 +38,7 @@ class WishlistAddView(APIView):
     def post(self, request):
         ser = WishlistAddSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        product = Product.objects.get(id=ser.validated_data['product_id'])
+        product = Product.objects.get(public_id=ser.validated_data['product_public_id'])
         filt = _wishlist_filter(request)
         _, created = WishlistItem.objects.get_or_create(product=product, **filt)
         if created:
@@ -53,9 +53,12 @@ class WishlistRemoveView(APIView):
     """Remove product from wishlist."""
     permission_classes = [AllowAny]
 
-    def post(self, request, product_id):
+    def post(self, request, product_public_id):
+        product = Product.objects.filter(public_id=product_public_id).first()
+        if not product:
+            return Response({'status': 'removed', 'deleted': False})
         deleted, _ = WishlistItem.objects.filter(
-            product_id=product_id, **_wishlist_filter(request)
+            product=product, **_wishlist_filter(request)
         ).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 

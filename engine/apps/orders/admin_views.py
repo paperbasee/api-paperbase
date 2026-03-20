@@ -28,7 +28,7 @@ class AdminOrderViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = Order.objects.prefetch_related('items__product').all()
-    lookup_field = 'pk'
+    lookup_field = 'public_id'
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -86,12 +86,12 @@ class AdminOrderViewSet(
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="order",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Order created: {instance.order_number}",
         )
 
     @action(detail=True, methods=['patch'], url_path='status')
-    def update_status(self, request, pk=None):
+    def update_status(self, request, public_id=None):
         order = self.get_object()
         serializer = AdminOrderStatusSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -103,14 +103,14 @@ class AdminOrderViewSet(
                 request=request,
                 action=ActivityLog.Action.CUSTOM,
                 entity_type="order",
-                entity_id=order.pk,
+                entity_id=order.public_id,
                 summary=f"Order {order.order_number} status changed: {prev_status} → {order.status}",
                 metadata={"from": prev_status, "to": order.status},
             )
         return Response(AdminOrderSerializer(order).data)
 
     @action(detail=True, methods=['patch'], url_path='tracking')
-    def update_tracking(self, request, pk=None):
+    def update_tracking(self, request, public_id=None):
         order = self.get_object()
         prev_tracking = order.tracking_number
         tracking = request.data.get('tracking_number', '')
@@ -121,20 +121,20 @@ class AdminOrderViewSet(
                 request=request,
                 action=ActivityLog.Action.CUSTOM,
                 entity_type="order",
-                entity_id=order.pk,
+                entity_id=order.public_id,
                 summary=f"Order {order.order_number} tracking updated",
                 metadata={"from": prev_tracking or "", "to": tracking or ""},
             )
         return Response(AdminOrderSerializer(order).data)
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         order_number = getattr(instance, "order_number", "")
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="order",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Order deleted: {order_number}" if order_number else "Order deleted",
         )

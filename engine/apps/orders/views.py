@@ -177,24 +177,11 @@ class DirectOrderCreateView(CreateAPIView):
         
         # Get products with locked rows for atomic stock updates
         from engine.apps.products.models import Product
-        import uuid as uuid_lib
-        product_ids = []
-        validation_errors = []
-        for p in products_data:
-            try:
-                product_ids.append(uuid_lib.UUID(p['id']))
-            except (ValueError, TypeError):
-                validation_errors.append(f"Invalid product ID: {p['id']}")
-        
-        if validation_errors:
-            return Response(
-                {'detail': 'Invalid product data.', 'errors': validation_errors},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+        product_public_ids = [p['public_id'] for p in products_data]
+
         locked_products = {
-            str(p.id): p
-            for p in Product.objects.filter(id__in=product_ids).select_for_update()
+            p.public_id: p
+            for p in Product.objects.filter(public_id__in=product_public_ids).select_for_update()
         }
 
         # Validate all products belong to the same store.
@@ -204,11 +191,11 @@ class DirectOrderCreateView(CreateAPIView):
                 {'detail': 'All products in a single order must belong to the same store.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        
+
         # Check stock availability
         stock_errors = []
         for product_data in products_data:
-            product_id_str = str(product_data['id'])
+            product_id_str = product_data['public_id']
             quantity = product_data['quantity']
             product = locked_products.get(product_id_str)
             if not product:
@@ -219,7 +206,7 @@ class DirectOrderCreateView(CreateAPIView):
                     f"Insufficient stock for {product.name}. "
                     f"Available: {product.stock}, Requested: {quantity}"
                 )
-        
+
         if stock_errors:
             return Response(
                 {'detail': 'Stock validation failed.', 'errors': stock_errors},
@@ -257,7 +244,7 @@ class DirectOrderCreateView(CreateAPIView):
         )
         
         for product_data in products_data:
-            product_id_str = str(product_data['id'])
+            product_id_str = product_data['public_id']
             quantity = product_data['quantity']
             product = locked_products[product_id_str]
             price = product.price

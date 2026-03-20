@@ -4,6 +4,42 @@ from django.conf import settings
 from .ids import generate_public_id
 
 
+class PublicIdMixin(models.Model):
+    """
+    Abstract mixin that adds a prefixed opaque `public_id` field and auto-populates
+    it on first save.  Subclasses must define `PUBLIC_ID_KIND` matching a key in
+    `engine.core.ids._PREFIXES` and call super().save() from their own save().
+
+    Usage::
+
+        class MyModel(PublicIdMixin, models.Model):
+            PUBLIC_ID_KIND = "mymodel"
+            ...
+
+            def save(self, *args, **kwargs):
+                # PublicIdMixin.save() populates public_id before persisting
+                super().save(*args, **kwargs)
+    """
+
+    PUBLIC_ID_KIND: str = ""
+
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. prd_xxx).",
+    )
+
+    class Meta:
+        abstract = True
+
+    def save(self, *args, **kwargs):
+        if not self.public_id and self.PUBLIC_ID_KIND:
+            self.public_id = generate_public_id(self.PUBLIC_ID_KIND)
+        super().save(*args, **kwargs)
+
+
 class ActivityLog(models.Model):
     class Action(models.TextChoices):
         CREATE = "create", "Create"

@@ -38,26 +38,24 @@ class StoreSerializer(serializers.ModelSerializer):
 
 
 class StoreMembershipSerializer(serializers.ModelSerializer):
+    user_public_id = serializers.CharField(source="user.public_id", read_only=True)
     user_email = serializers.EmailField(source="user.email", read_only=True)
-    user_username = serializers.CharField(source="user.username", read_only=True)
-    store_name = serializers.CharField(source="store.name", read_only=True)
     store_public_id = serializers.CharField(source="store.public_id", read_only=True)
+    store_name = serializers.CharField(source="store.name", read_only=True)
 
     class Meta:
         model = StoreMembership
         fields = [
-            "id",
-            "user",
+            "public_id",
+            "user_public_id",
             "user_email",
-            "user_username",
-            "store",
             "store_public_id",
             "store_name",
             "role",
             "is_active",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at", "user_email", "user_username", "store_name", "store_public_id"]
+        read_only_fields = ["public_id", "user_public_id", "created_at", "user_email", "store_name", "store_public_id"]
 
 
 class DeleteStoreRequestSerializer(serializers.Serializer):

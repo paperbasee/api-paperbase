@@ -32,7 +32,7 @@ class AdminCouponViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="coupon",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Coupon created: {instance.code}",
         )
 
@@ -42,18 +42,18 @@ class AdminCouponViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="coupon",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Coupon updated: {instance.code}",
         )
 
     def perform_destroy(self, instance):
         code = instance.code
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="coupon",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Coupon deleted: {code}",
         )

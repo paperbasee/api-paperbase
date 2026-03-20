@@ -43,7 +43,7 @@ class CartAddView(APIView):
         ser = CartAddSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         cart = get_or_create_cart(request)
-        product = Product.objects.get(id=ser.validated_data['product_id'])
+        product = Product.objects.get(public_id=ser.validated_data['product_public_id'])
         quantity = ser.validated_data['quantity']
         size = (ser.validated_data.get('size') or '').strip()
 
@@ -91,12 +91,15 @@ class CartRemoveView(APIView):
 
 
 class CartRemoveByProductView(APIView):
-    """Remove a cart item by product UUID (used by frontend sync)."""
+    """Remove a cart item by product public_id (used by frontend sync)."""
     permission_classes = [AllowAny]
 
-    def post(self, request, product_id):
+    def post(self, request, product_public_id):
         cart = get_or_create_cart(request)
-        deleted, _ = CartItem.objects.filter(cart=cart, product_id=product_id).delete()
+        product = Product.objects.filter(public_id=product_public_id).first()
+        if not product:
+            return Response({'status': 'removed', 'deleted': False})
+        deleted, _ = CartItem.objects.filter(cart=cart, product=product).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 
 

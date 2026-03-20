@@ -20,7 +20,6 @@ class AdminActivityLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityLog
         fields = [
-            "id",
             "public_id",
             "created_at",
             "actor",

@@ -22,12 +22,13 @@ class CartSerializer(serializers.ModelSerializer):
 
 
 class CartAddSerializer(serializers.Serializer):
-    product_id = serializers.UUIDField()
+    # Use public_id (e.g. prd_xxx) — do NOT accept internal UUID/integer PKs
+    product_public_id = serializers.CharField()
     quantity = serializers.IntegerField(min_value=1, default=1)
     size = serializers.CharField(max_length=20, allow_blank=True, default='')
 
-    def validate_product_id(self, value):
+    def validate_product_public_id(self, value):
         from engine.apps.products.models import Product
-        if not Product.objects.filter(id=value, is_active=True).exists():
+        if not Product.objects.filter(public_id=value, is_active=True).exists():
             raise serializers.ValidationError('Product not found.')
         return value

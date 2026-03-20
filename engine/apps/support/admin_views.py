@@ -30,14 +30,14 @@ class AdminSupportTicketViewSet(
         return qs.filter(store=ctx.store)
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         subject = getattr(instance, "subject", "")
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="support_ticket",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Support ticket deleted: {subject}" if subject else "Support ticket deleted",
         )
 

@@ -11,6 +11,6 @@ class AdminWishlistItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = WishlistItem
         fields = [
-            'id', 'public_id', 'product', 'product_public_id', 'product_name', 'product_brand', 'created_at',
+            'public_id', 'product_public_id', 'product_name', 'product_brand', 'created_at',
         ]
-        read_only_fields = ['id', 'public_id', 'product_name', 'product_brand', 'product_public_id', 'created_at']
+        read_only_fields = ['public_id', 'product_name', 'product_brand', 'product_public_id', 'created_at']

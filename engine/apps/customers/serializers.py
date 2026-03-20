@@ -14,10 +14,10 @@ class CustomerAddressSerializer(serializers.ModelSerializer):
 
 
 class CustomerProfileSerializer(serializers.ModelSerializer):
+    user_public_id = serializers.CharField(source='user.public_id', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
     addresses = CustomerAddressSerializer(many=True, read_only=True)
 
     class Meta:
         model = Customer
-        fields = ['user', 'email', 'username', 'phone', 'marketing_opt_in', 'addresses', 'created_at', 'updated_at']
+        fields = ['user_public_id', 'email', 'phone', 'marketing_opt_in', 'addresses', 'created_at', 'updated_at']

@@ -42,6 +42,7 @@ _PREFIXES: dict[str, str] = {
     "activitylog": "act",
     "notification": "ntf",
     "sysnotification": "snt",
+    "storedeletionjob": "dlj",
 }
 
 

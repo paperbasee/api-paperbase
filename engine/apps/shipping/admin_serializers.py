@@ -19,9 +19,10 @@ class AdminShippingZoneSerializer(serializers.ModelSerializer):
 
 
 class AdminShippingMethodSerializer(serializers.ModelSerializer):
-    zone_ids = serializers.PrimaryKeyRelatedField(
+    zone_public_ids = serializers.SlugRelatedField(
         many=True,
         required=False,
+        slug_field="public_id",
         queryset=ShippingZone.objects.all(),
         source="zones",
     )
@@ -34,7 +35,7 @@ class AdminShippingMethodSerializer(serializers.ModelSerializer):
             "method_type",
             "is_active",
             "order",
-            "zone_ids",
+            "zone_public_ids",
             "created_at",
             "updated_at",
         ]
@@ -42,6 +43,15 @@ class AdminShippingMethodSerializer(serializers.ModelSerializer):
 
 
 class AdminShippingRateSerializer(serializers.ModelSerializer):
+    shipping_method = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=ShippingMethod.objects.all(),
+    )
+    shipping_zone = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=ShippingZone.objects.all(),
+    )
+
     class Meta:
         model = ShippingRate
         fields = [

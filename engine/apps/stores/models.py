@@ -104,6 +104,13 @@ class StoreMembership(models.Model):
         ADMIN = "admin", "Admin"
         STAFF = "staff", "Staff"
 
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier used in APIs and URLs (e.g. mbr_xxx).",
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -130,6 +137,11 @@ class StoreMembership(models.Model):
             models.Index(fields=["user", "created_at"]),
         ]
 
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("mbr")
+        super().save(*args, **kwargs)
+
     def __str__(self) -> str:
         return f"{self.user} @ {self.store} ({self.get_role_display()})"
 
@@ -147,6 +159,14 @@ class StoreDeletionJob(models.Model):
         RUNNING = "running", "Running"
         SUCCESS = "success", "Success"
         FAILED = "failed", "Failed"
+
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. dlj_xxx).",
+    )
 
     # Step strings returned to the frontend (kept stable for UI).
     STEP_REMOVING_ORDERS = "Removing orders..."
@@ -196,6 +216,11 @@ class StoreDeletionJob(models.Model):
         indexes = [
             models.Index(fields=["user", "status"]),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("storedeletionjob")
+        super().save(*args, **kwargs)
 
     def __str__(self) -> str:
         return f"StoreDeletionJob({self.store_public_id_snapshot})[{self.status}]"

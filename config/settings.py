@@ -177,8 +177,8 @@ SIMPLE_JWT = {
     "BLACKLIST_AFTER_ROTATION": True,
     "ALGORITHM": "HS256",
     "AUTH_HEADER_TYPES": ("Bearer",),
-    "USER_ID_FIELD": "id",
-    "USER_ID_CLAIM": "user_id",
+    "USER_ID_FIELD": "public_id",
+    "USER_ID_CLAIM": "user_public_id",
     "SIGNING_KEY": SECRET_KEY,
 }
 

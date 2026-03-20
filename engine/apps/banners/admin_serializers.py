@@ -9,8 +9,6 @@ class AdminBannerSerializer(serializers.ModelSerializer):
     class Meta:
         model = Banner
         fields = [
-            "id",
-            "store",
             "public_id",
             "image",
             "title",
@@ -26,7 +24,7 @@ class AdminBannerSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "store", "public_id", "created_at", "updated_at"]
+        read_only_fields = ["public_id", "created_at", "updated_at"]
 
     def validate(self, attrs):
         is_clickable = attrs.get("is_clickable")

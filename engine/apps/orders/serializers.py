@@ -17,12 +17,14 @@ class OrderItemSerializer(serializers.ModelSerializer):
 class OrderSerializer(serializers.ModelSerializer):
     items = OrderItemSerializer(many=True, read_only=True)
     delivery_area_label = serializers.CharField(source='get_delivery_area_display', read_only=True)
+    shipping_zone_public_id = serializers.CharField(source='shipping_zone.public_id', read_only=True, allow_null=True)
+    shipping_method_public_id = serializers.CharField(source='shipping_method.public_id', read_only=True, allow_null=True)
 
     class Meta:
         model = Order
         fields = [
-            'id', 'public_id', 'status', 'subtotal', 'shipping_cost', 'total',
-            'shipping_zone', 'shipping_method',
+            'public_id', 'status', 'subtotal', 'shipping_cost', 'total',
+            'shipping_zone_public_id', 'shipping_method_public_id',
             'shipping_name', 'shipping_address',
             'phone', 'email', 'district', 'delivery_area', 'delivery_area_label',
             'tracking_number', 'created_at', 'updated_at', 'items',
@@ -31,8 +33,8 @@ class OrderSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        # Expose order_number as id for customer-facing API
-        data['id'] = instance.order_number or str(instance.id)
+        # Expose order_number (or public_id as fallback) as id for customer-facing API
+        data['id'] = instance.order_number or instance.public_id
         return data
 
 
@@ -90,6 +92,6 @@ class DirectOrderCreateSerializer(serializers.Serializer):
         if not value:
             raise serializers.ValidationError('At least one product is required.')
         for product in value:
-            if 'id' not in product or 'quantity' not in product:
-                raise serializers.ValidationError('Each product must have id and quantity.')
+            if 'public_id' not in product or 'quantity' not in product:
+                raise serializers.ValidationError('Each product must have public_id and quantity.')
         return value

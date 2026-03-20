@@ -55,7 +55,8 @@ class AdminStockMovementViewSet(viewsets.ReadOnlyModelViewSet):
         if not ctx.store:
             return qs.none()
         qs = qs.filter(inventory__product__store=ctx.store)
-        inventory_id = self.request.query_params.get('inventory_id')
-        if inventory_id:
-            qs = qs.filter(inventory_id=inventory_id)
+        # Do NOT accept inventory_id (numeric FK) — use inventory_public_id instead
+        inventory_public_id = self.request.query_params.get('inventory_public_id')
+        if inventory_public_id:
+            qs = qs.filter(inventory__public_id=inventory_public_id)
         return qs

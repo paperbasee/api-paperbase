@@ -58,7 +58,7 @@ class ProductListView(ListAPIView):
 
 
 class ProductDetailView(RetrieveAPIView):
-    """Get single product by UUID or slug."""
+    """Get single product by public_id (prd_xxx) or slug."""
     serializer_class = ProductDetailSerializer
     def get_queryset(self):
         ctx = get_active_store(self.request)
@@ -88,15 +88,12 @@ class ProductDetailView(RetrieveAPIView):
     lookup_url_kwarg = 'identifier'
 
     def get_object(self):
+        # Do NOT accept internal UUID/integer PKs — use public_id or slug only
         identifier = self.kwargs.get(self.lookup_url_kwarg)
         qs = self.get_queryset()
-        try:
-            import uuid
-
-            uuid.UUID(str(identifier))
-            return get_object_or_404(qs, id=identifier)
-        except Exception:
-            return get_object_or_404(qs, slug=identifier)
+        if identifier and identifier.startswith('prd_'):
+            return get_object_or_404(qs, public_id=identifier)
+        return get_object_or_404(qs, slug=identifier)
 
     def retrieve(self, request, *args, **kwargs):
         response = super().retrieve(request, *args, **kwargs)
@@ -117,12 +114,10 @@ class ProductRelatedView(ListAPIView):
         base_qs = Product.objects.filter(
             is_active=True, status=Product.Status.ACTIVE, store=ctx.store
         )
-        try:
-            import uuid
-
-            uuid.UUID(str(identifier))
-            product = get_object_or_404(base_qs, id=identifier)
-        except Exception:
+        # Do NOT accept internal UUID/integer PKs — use public_id or slug only
+        if identifier and identifier.startswith('prd_'):
+            product = get_object_or_404(base_qs, public_id=identifier)
+        else:
             product = get_object_or_404(base_qs, slug=identifier)
         return (
             Product.objects.filter(

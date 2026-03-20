@@ -39,7 +39,7 @@ class AdminNotificationViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="notification",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary="Notification created",
             metadata={"text": getattr(instance, "text", "")},
         )
@@ -50,20 +50,20 @@ class AdminNotificationViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="notification",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary="Notification updated",
             metadata={"text": getattr(instance, "text", "")},
         )
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         text = getattr(instance, "text", "")
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="notification",
-            entity_id=pk,
+            entity_id=public_id,
             summary="Notification deleted",
             metadata={"text": text},
         )

@@ -48,7 +48,6 @@ class ProductVariantPublicSerializer(serializers.ModelSerializer):
 
 class ProductListSerializer(serializers.ModelSerializer):
     """For list views: matches frontend Product shape."""
-    id = serializers.CharField(read_only=True)
     image = serializers.SerializerMethodField()
     originalPrice = serializers.DecimalField(
         source='original_price', max_digits=10, decimal_places=2,
@@ -62,7 +61,7 @@ class ProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'public_id', 'name', 'brand', 'price', 'originalPrice', 'image',
+            'public_id', 'name', 'brand', 'price', 'originalPrice', 'image',
             'badge', 'category', 'slug', 'stock', 'totalStock', 'variantCount', 'extra_data',
         ]
 
@@ -92,7 +91,6 @@ class ProductListSerializer(serializers.ModelSerializer):
 
 class ProductDetailSerializer(serializers.ModelSerializer):
     """For detail view: adds images, description, variants, aggregated stock."""
-    id = serializers.CharField(read_only=True)
     image = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
     originalPrice = serializers.DecimalField(
@@ -108,7 +106,7 @@ class ProductDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'originalPrice', 'image', 'images',
+            'public_id', 'name', 'brand', 'slug', 'price', 'originalPrice', 'image', 'images',
             'badge', 'category', 'description',
             'is_featured', 'created_at', 'stock', 'totalStock', 'variantCount', 'variants',
             'extra_data',

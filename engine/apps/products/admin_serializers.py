@@ -22,27 +22,27 @@ def _compact_code(raw: str, *, max_len: int) -> str:
     return s.upper()[:max_len]
 
 
-def _variant_option_codes(value_ids: list[int]) -> list[str]:
-    if not value_ids:
+def _variant_option_codes(value_public_ids: list[str]) -> list[str]:
+    if not value_public_ids:
         return []
     values = (
-        ProductAttributeValue.objects.filter(pk__in=value_ids)
+        ProductAttributeValue.objects.filter(public_id__in=value_public_ids)
         .select_related("attribute")
         .order_by("attribute__order", "order", "pk")
     )
     out: list[str] = []
     for v in values:
-        seg = _compact_code(v.value, max_len=4) or _compact_code(str(v.pk), max_len=4)
+        seg = _compact_code(v.value, max_len=4) or _compact_code(v.public_id, max_len=4)
         if seg:
             out.append(seg)
     return out
 
 
-def generate_variant_sku(*, product: Product, attribute_value_ids: list[int]) -> str:
+def generate_variant_sku(*, product: Product, attribute_value_public_ids: list[str]) -> str:
     store = getattr(product, "store", None)
     store_part = _compact_code(getattr(store, "name", ""), max_len=5) or "STORE"
     product_part = _compact_code(getattr(product, "name", ""), max_len=10) or "PRODUCT"
-    parts = [store_part, product_part, *_variant_option_codes(attribute_value_ids)]
+    parts = [store_part, product_part, *_variant_option_codes(attribute_value_public_ids)]
     return "-".join(p for p in parts if p)
 
 
@@ -62,6 +62,11 @@ def ensure_unique_variant_sku(*, product: Product, base_sku: str, exclude_id: in
 
 
 class AdminProductImageSerializer(serializers.ModelSerializer):
+    product = serializers.SlugRelatedField(
+        slug_field='public_id',
+        queryset=Product.objects.all(),
+    )
+
     class Meta:
         model = ProductImage
         fields = ['public_id', 'product', 'image', 'order']
@@ -85,6 +90,7 @@ class AdminProductImageSerializer(serializers.ModelSerializer):
 
 
 class AdminProductListSerializer(serializers.ModelSerializer):
+    category_public_id = serializers.CharField(source='category.public_id', read_only=True)
     category_name = serializers.CharField(source='category.name', read_only=True)
     image_url = serializers.SerializerMethodField()
     variant_count = serializers.SerializerMethodField()
@@ -93,8 +99,8 @@ class AdminProductListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = [
-            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
-            'image_url', 'badge', 'category', 'category_name',
+            'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
+            'image_url', 'badge', 'category_public_id', 'category_name',
             'stock', 'variant_count', 'total_stock',
             'is_featured', 'is_active', 'extra_data', 'created_at',
         ]
@@ -127,25 +133,26 @@ class AdminProductListSerializer(serializers.ModelSerializer):
 
 class AdminProductSerializer(serializers.ModelSerializer):
     images = AdminProductImageSerializer(many=True, read_only=True)
+    category = serializers.SlugRelatedField(
+        slug_field='public_id',
+        queryset=Category.objects.none(),
+        help_text='Leaf or intermediate category this product belongs to (public_id).',
+    )
     category_name = serializers.CharField(source='category.name', read_only=True)
     variant_count = serializers.SerializerMethodField()
     total_stock = serializers.SerializerMethodField()
-    category = serializers.PrimaryKeyRelatedField(
-        queryset=Category.objects.none(),
-        help_text='Leaf or intermediate category this product belongs to.',
-    )
 
     class Meta:
         model = Product
         fields = [
-            'id', 'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
+            'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
             'image', 'badge', 'category', 'category_name',
             'description',
             'stock', 'variant_count', 'total_stock',
             'is_featured', 'is_active', 'extra_data', 'images',
             'created_at', 'updated_at',
         ]
-        read_only_fields = ['id', 'public_id', 'slug', 'created_at', 'updated_at', 'variant_count', 'total_stock']
+        read_only_fields = ['public_id', 'slug', 'created_at', 'updated_at', 'variant_count', 'total_stock']
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -194,7 +201,8 @@ class AdminParentCategorySerializer(serializers.ModelSerializer):
 class AdminCategorySerializer(serializers.ModelSerializer):
     """Serializer for child categories (nested under a parent)."""
     product_count = serializers.SerializerMethodField()
-    parent = serializers.PrimaryKeyRelatedField(
+    parent = serializers.SlugRelatedField(
+        slug_field='public_id',
         queryset=Category.objects.none(),
         allow_null=True,
         required=False,
@@ -226,6 +234,10 @@ class AdminCategorySerializer(serializers.ModelSerializer):
 
 
 class AdminProductAttributeValueSerializer(serializers.ModelSerializer):
+    attribute = serializers.SlugRelatedField(
+        slug_field="public_id",
+        queryset=ProductAttribute.objects.all(),
+    )
     attribute_name = serializers.CharField(source="attribute.name", read_only=True)
 
     class Meta:
@@ -282,11 +294,11 @@ class AdminProductAttributeSerializer(serializers.ModelSerializer):
 
 
 class AdminProductVariantSerializer(serializers.ModelSerializer):
-    """Dashboard CRUD for variants; links attribute values via attribute_value_ids."""
+    """Dashboard CRUD for variants; links attribute values via attribute_value_public_ids."""
 
     sku = serializers.CharField(required=False, allow_blank=True)
-    attribute_value_ids = serializers.ListField(
-        child=serializers.IntegerField(),
+    attribute_value_public_ids = serializers.ListField(
+        child=serializers.CharField(),
         required=False,
         default=list,
     )
@@ -301,7 +313,7 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
             "price_override",
             "stock_quantity",
             "is_active",
-            "attribute_value_ids",
+            "attribute_value_public_ids",
             "option_labels",
             "created_at",
             "updated_at",
@@ -318,7 +330,7 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
         store_id = (self.context or {}).get("store_id")
         if store_id is not None:
             qs = qs.filter(store_id=store_id)
-        self.fields["product"] = serializers.PrimaryKeyRelatedField(queryset=qs)
+        self.fields["product"] = serializers.SlugRelatedField(slug_field="public_id", queryset=qs)
 
     def get_option_labels(self, obj):
         links = (
@@ -333,20 +345,20 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
-        data["attribute_value_ids"] = [
-            link.attribute_value_id for link in instance.attribute_values.all()
+        data["attribute_value_public_ids"] = [
+            link.attribute_value.public_id for link in instance.attribute_values.select_related("attribute_value").all()
         ]
         return data
 
-    def validate_attribute_value_ids(self, ids):
-        if not ids:
+    def validate_attribute_value_public_ids(self, public_ids):
+        if not public_ids:
             return []
-        uniq = list(dict.fromkeys(ids))
+        uniq = list(dict.fromkeys(public_ids))
         values = list(
-            ProductAttributeValue.objects.filter(pk__in=uniq).select_related("attribute")
+            ProductAttributeValue.objects.filter(public_id__in=uniq).select_related("attribute")
         )
         if len(values) != len(uniq):
-            raise serializers.ValidationError("One or more attribute value ids are invalid.")
+            raise serializers.ValidationError("One or more attribute value public_ids are invalid.")
         seen_attr = set()
         for v in values:
             aid = v.attribute_id
@@ -376,29 +388,35 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
                 attrs["sku"] = sku_norm
         return attrs
 
+    def _resolve_attribute_values(self, public_ids: list[str]) -> list[ProductAttributeValue]:
+        """Resolve a list of attribute value public_ids to model instances."""
+        if not public_ids:
+            return []
+        values = list(ProductAttributeValue.objects.filter(public_id__in=public_ids))
+        return values
+
     def create(self, validated_data):
-        ids = validated_data.pop("attribute_value_ids", [])
+        public_ids = validated_data.pop("attribute_value_public_ids", [])
         product = validated_data["product"]
         sku = (validated_data.get("sku") or "").strip()
         if not sku:
-            base = generate_variant_sku(product=product, attribute_value_ids=ids)
+            base = generate_variant_sku(product=product, attribute_value_public_ids=public_ids)
             validated_data["sku"] = ensure_unique_variant_sku(product=product, base_sku=base)
         variant = ProductVariant.objects.create(**validated_data)
-        for pk in ids:
-            ProductVariantAttribute.objects.create(
-                variant=variant, attribute_value_id=pk
-            )
+        attr_values = self._resolve_attribute_values(public_ids)
+        for av in attr_values:
+            ProductVariantAttribute.objects.create(variant=variant, attribute_value=av)
         return variant
 
     def update(self, instance, validated_data):
-        ids = validated_data.pop("attribute_value_ids", None)
+        public_ids = validated_data.pop("attribute_value_public_ids", None)
         incoming_sku = validated_data.get("sku", None)
         if incoming_sku is not None:
             incoming_sku = (incoming_sku or "").strip().upper()
 
         # Auto-regenerate SKU on edit when options change, unless the user explicitly
         # provided a different SKU. This keeps SKU aligned with option edits.
-        if ids is not None:
+        if public_ids is not None:
             should_regen = False
             if not incoming_sku:
                 # User cleared SKU or omitted it: always generate.
@@ -407,7 +425,7 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
                 # SKU unchanged by user: treat as auto-managed.
                 should_regen = True
             if should_regen:
-                base = generate_variant_sku(product=instance.product, attribute_value_ids=ids)
+                base = generate_variant_sku(product=instance.product, attribute_value_public_ids=public_ids)
                 validated_data["sku"] = ensure_unique_variant_sku(
                     product=instance.product,
                     base_sku=base,
@@ -416,10 +434,9 @@ class AdminProductVariantSerializer(serializers.ModelSerializer):
         for key, val in validated_data.items():
             setattr(instance, key, val)
         instance.save()
-        if ids is not None:
+        if public_ids is not None:
             instance.attribute_values.all().delete()
-            for pk in ids:
-                ProductVariantAttribute.objects.create(
-                    variant=instance, attribute_value_id=pk
-                )
+            attr_values = self._resolve_attribute_values(public_ids)
+            for av in attr_values:
+                ProductVariantAttribute.objects.create(variant=instance, attribute_value=av)
         return instance

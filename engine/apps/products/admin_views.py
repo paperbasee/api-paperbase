@@ -81,7 +81,7 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="product",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Product created: {instance.name}",
         )
 
@@ -91,19 +91,19 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="product",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Product updated: {instance.name}",
         )
 
     def perform_destroy(self, instance):
         name = getattr(instance, "name", "")
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="product",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Product deleted: {name}" if name else "Product deleted",
         )
 
@@ -188,7 +188,7 @@ class AdminParentCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="category",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Parent category created: {getattr(instance, 'name', '')}".strip() or "Parent category created",
         )
 
@@ -198,19 +198,19 @@ class AdminParentCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="category",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Parent category updated: {getattr(instance, 'name', '')}".strip() or "Parent category updated",
         )
 
     def perform_destroy(self, instance):
         name = getattr(instance, "name", "")
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="category",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Parent category deleted: {name}" if name else "Parent category deleted",
         )
 
@@ -253,7 +253,7 @@ class AdminCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="category",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Category created: {getattr(instance, 'name', '')}".strip() or "Category created",
         )
 
@@ -263,19 +263,19 @@ class AdminCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="category",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Category updated: {getattr(instance, 'name', '')}".strip() or "Category updated",
         )
 
     def perform_destroy(self, instance):
         name = getattr(instance, "name", "")
-        pk = instance.pk
+        public_id = instance.public_id
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="category",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Category deleted: {name}" if name else "Category deleted",
         )
 
@@ -297,8 +297,8 @@ class AdminProductVariantViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
         qs = qs.filter(product__store=ctx.store)
         product_id = self.request.query_params.get("product")
         if product_id:
-            qs = qs.filter(product_id=product_id)
-        return qs.order_by("product_id", "sku", "id")
+            qs = qs.filter(product__public_id=product_id)
+        return qs.order_by("product__public_id", "sku", "id")
 
     def get_serializer_context(self):
         ctx = get_active_store(self.request)
@@ -333,7 +333,7 @@ class AdminProductVariantViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="product_variant",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Variant created: {instance.sku} ({instance.product.name})",
         )
 
@@ -346,7 +346,7 @@ class AdminProductVariantViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="product_variant",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Variant updated: {instance.sku}",
         )
 
@@ -354,14 +354,14 @@ class AdminProductVariantViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
         self._ensure_product_in_store(instance.product)
         pid = instance.product_id
         sku = instance.sku
-        variant_pk = instance.pk
+        variant_public_id = instance.public_id
         super().perform_destroy(instance)
         sync_product_stock_from_variants(pid)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="product_variant",
-            entity_id=variant_pk,
+            entity_id=variant_public_id,
             summary=f"Variant deleted: {sku}",
         )
 
@@ -378,7 +378,7 @@ class AdminProductAttributeViewSet(StoreRolePermissionMixin, viewsets.ModelViewS
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="product_attribute",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Product attribute created: {instance.name}",
         )
 
@@ -388,19 +388,19 @@ class AdminProductAttributeViewSet(StoreRolePermissionMixin, viewsets.ModelViewS
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="product_attribute",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Product attribute updated: {instance.name}",
         )
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         name = instance.name
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="product_attribute",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Product attribute deleted: {name}",
         )
 
@@ -414,9 +414,10 @@ class AdminProductAttributeValueViewSet(StoreRolePermissionMixin, viewsets.Model
 
     def get_queryset(self):
         qs = super().get_queryset()
-        attr_id = self.request.query_params.get("attribute")
-        if attr_id:
-            qs = qs.filter(attribute_id=attr_id)
+        # Do NOT accept ?attribute=<int> (internal PK) — use attribute_public_id instead
+        attr_public_id = self.request.query_params.get("attribute_public_id")
+        if attr_public_id:
+            qs = qs.filter(attribute__public_id=attr_public_id)
         return qs
 
     def perform_create(self, serializer):
@@ -425,7 +426,7 @@ class AdminProductAttributeValueViewSet(StoreRolePermissionMixin, viewsets.Model
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="product_attribute_value",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Attribute value created: {instance}",
         )
 
@@ -435,19 +436,19 @@ class AdminProductAttributeValueViewSet(StoreRolePermissionMixin, viewsets.Model
             request=self.request,
             action=ActivityLog.Action.UPDATE,
             entity_type="product_attribute_value",
-            entity_id=instance.pk,
+            entity_id=instance.public_id,
             summary=f"Attribute value updated: {instance}",
         )
 
     def perform_destroy(self, instance):
-        pk = instance.pk
+        public_id = instance.public_id
         label = str(instance)
         super().perform_destroy(instance)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
             entity_type="product_attribute_value",
-            entity_id=pk,
+            entity_id=public_id,
             summary=f"Attribute value deleted: {label}",
         )
 
