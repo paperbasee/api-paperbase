@@ -60,6 +60,13 @@ class Inventory(models.Model):
 
 class StockMovement(models.Model):
     """Record of a stock adjustment for auditing and history."""
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. stm_xxx).",
+    )
 
     class Reason(models.TextChoices):
         ADJUSTMENT = 'adjustment', 'Manual adjustment'
@@ -92,3 +99,8 @@ class StockMovement(models.Model):
     def __str__(self):
         sign = '+' if self.change >= 0 else ''
         return f"{self.inventory} {sign}{self.change} ({self.get_reason_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("stockmovement")
+        super().save(*args, **kwargs)

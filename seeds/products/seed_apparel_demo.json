@@ -1,0 +1,52 @@
+{
+  "SHIRT_NAME": "Classic Crew Neck T-Shirt",
+  "PANT_NAME": "Stretch Chino Pant",
+  "ATTR_SHIRT_COLOR": "demo-shirt-color",
+  "ATTR_SHIRT_SIZE": "demo-shirt-size",
+  "ATTR_PANT_WAIST": "demo-pant-waist",
+  "ATTR_PANT_FIT": "demo-pant-fit",
+  "SHIRT_COLORS": [
+    [
+      "Black",
+      "BLK"
+    ],
+    [
+      "White",
+      "WHT"
+    ],
+    [
+      "Navy",
+      "NVY"
+    ],
+    [
+      "Burgundy",
+      "BRG"
+    ]
+  ],
+  "SHIRT_SIZES": [
+    "XS",
+    "S",
+    "M",
+    "L",
+    "XL"
+  ],
+  "PANT_WAISTS": [
+    "32",
+    "33",
+    "34",
+    "35",
+    "36",
+    "37",
+    "38"
+  ],
+  "PANT_FITS": [
+    [
+      "Regular",
+      "REG"
+    ],
+    [
+      "Slim",
+      "SLM"
+    ]
+  ]
+}

@@ -1,6 +1,8 @@
 from django.db import models
 from django.conf import settings
 
+from .ids import generate_public_id
+
 
 class ActivityLog(models.Model):
     class Action(models.TextChoices):
@@ -24,6 +26,13 @@ class ActivityLog(models.Model):
         related_name="activity_logs",
     )
     action = models.CharField(max_length=20, choices=Action.choices)
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. act_xxx).",
+    )
     entity_type = models.CharField(max_length=50)
     entity_id = models.CharField(max_length=64, blank=True, default="")
     summary = models.CharField(max_length=255)
@@ -40,3 +49,8 @@ class ActivityLog(models.Model):
     def __str__(self) -> str:
         base = f"{self.entity_type}:{self.entity_id}" if self.entity_id else self.entity_type
         return f"{self.get_action_display()} {base}"
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("activitylog")
+        super().save(*args, **kwargs)

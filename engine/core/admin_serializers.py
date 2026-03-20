@@ -21,6 +21,7 @@ class AdminActivityLogSerializer(serializers.ModelSerializer):
         model = ActivityLog
         fields = [
             "id",
+            "public_id",
             "created_at",
             "actor",
             "action",

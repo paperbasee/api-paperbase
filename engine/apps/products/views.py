@@ -54,7 +54,7 @@ class ProductListView(ListAPIView):
         if hot_deals and hot_deals.lower() == 'true':
             qs = qs.filter(badge='sale')
 
-        return qs
+        return qs.order_by("-created_at", "id")
 
 
 class ProductDetailView(RetrieveAPIView):
@@ -139,7 +139,8 @@ class ProductRelatedView(ListAPIView):
                 _pub_variant_stock_sum=Sum(
                     "variants__stock_quantity", filter=Q(variants__is_active=True)
                 ),
-            )[:4]
+            )
+            .order_by("-created_at", "id")[:4]
         )
 
 
@@ -263,7 +264,7 @@ class ProductSearchView(ListAPIView):
             Q(description__icontains=query)
         )
 
-        return qs.order_by('name')[:10]
+        return qs.order_by('name', 'id')[:10]
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)

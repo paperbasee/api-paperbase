@@ -40,11 +40,11 @@ class AdminOrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrderItem
         fields = [
-            'id', 'product', 'product_name', 'product_brand', 'product_image',
+            'id', 'public_id', 'product', 'product_name', 'product_brand', 'product_image',
             'variant', 'variant_sku', 'variant_stock_quantity', 'variant_option_labels',
             'quantity', 'price', 'original_price',
         ]
-        read_only_fields = ['id']
+        read_only_fields = ['id', 'public_id']
 
     def get_product_image(self, obj):
         if obj.product.image and hasattr(obj.product.image, 'url'):
@@ -75,7 +75,7 @@ class AdminOrderListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'order_number', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
+            'id', 'public_id', 'order_number', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_name', 'phone', 'district', 'delivery_area',
             'delivery_area_label', 'items_count', 'extra_data', 'created_at', 'updated_at',
         ]
@@ -93,14 +93,14 @@ class AdminOrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'order_number', 'user', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
+            'id', 'public_id', 'order_number', 'user', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_zone', 'shipping_method',
             'shipping_name', 'shipping_address', 'phone',
             'delivery_area', 'delivery_area_label', 'district',
             'tracking_number', 'extra_data', 'items', 'created_at', 'updated_at',
         ]
         read_only_fields = [
-            'id', 'order_number', 'subtotal', 'shipping_cost', 'total', 'created_at', 'updated_at',
+            'id', 'public_id', 'order_number', 'subtotal', 'shipping_cost', 'total', 'created_at', 'updated_at',
         ]
 
 
@@ -128,6 +128,7 @@ class AdminOrderUpdateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id",
+            "public_id",
             "order_number",
             "email",
             "status",
@@ -145,7 +146,7 @@ class AdminOrderUpdateSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "order_number", "total", "created_at", "updated_at"]
+        read_only_fields = ["id", "public_id", "order_number", "total", "created_at", "updated_at"]
 
     def update(self, instance: Order, validated_data):
         try:
@@ -263,6 +264,7 @@ class AdminOrderCreateSerializer(serializers.ModelSerializer):
         model = Order
         fields = [
             "id",
+            "public_id",
             "order_number",
             "email",
             "status",
@@ -280,7 +282,7 @@ class AdminOrderCreateSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "order_number", "total", "created_at", "updated_at"]
+        read_only_fields = ["id", "public_id", "order_number", "total", "created_at", "updated_at"]
 
     def validate_items(self, items):
         if not items:

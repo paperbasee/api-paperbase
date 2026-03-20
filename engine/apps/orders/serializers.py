@@ -10,7 +10,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = OrderItem
-        fields = ['product', 'quantity', 'price']
+        fields = ['public_id', 'product', 'quantity', 'price']
+        read_only_fields = ['public_id']
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -20,12 +21,13 @@ class OrderSerializer(serializers.ModelSerializer):
     class Meta:
         model = Order
         fields = [
-            'id', 'status', 'subtotal', 'shipping_cost', 'total',
+            'id', 'public_id', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_zone', 'shipping_method',
             'shipping_name', 'shipping_address',
             'phone', 'email', 'district', 'delivery_area', 'delivery_area_label',
             'tracking_number', 'created_at', 'updated_at', 'items',
         ]
+        read_only_fields = ['public_id']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

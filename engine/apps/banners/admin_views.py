@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from rest_framework.exceptions import ValidationError
 
-from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
@@ -28,14 +28,21 @@ class AdminBannerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         ctx = get_active_store(self.request)
         store = ctx.store
         if not store:
-            raise ValueError("No active store for banner creation")
+            raise ValidationError(
+                {
+                    "detail": (
+                        "No active store resolved. Re-login, switch store, or send the "
+                        "X-Store-ID header."
+                    )
+                }
+            )
         instance = serializer.save(store=store)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.CREATE,
             entity_type="banner",
             entity_id=instance.pk,
-            summary=f"Banner created: {instance.title or instance.position}",
+            summary=f"Banner created: {instance.title or instance.placement}",
         )
 
     def perform_update(self, serializer):
@@ -45,11 +52,11 @@ class AdminBannerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             action=ActivityLog.Action.UPDATE,
             entity_type="banner",
             entity_id=instance.pk,
-            summary=f"Banner updated: {instance.title or instance.position}",
+            summary=f"Banner updated: {instance.title or instance.placement}",
         )
 
     def perform_destroy(self, instance):
-        title = instance.title or instance.position
+        title = instance.title or instance.placement
         pk = instance.pk
         super().perform_destroy(instance)
         log_activity(

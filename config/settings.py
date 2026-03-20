@@ -14,7 +14,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Core settings (fixed values for local/testing)
 # ---------------------------------------------------------------------------
 
-SECRET_KEY = "dev-secret-key-change-me"
+SECRET_KEY = os.getenv(
+    "SECRET_KEY",
+    "dev-secret-key-change-me-please-use-at-least-32-bytes-for-local",
+)
 DEBUG = True
 
 # Used to make test runs deterministic (e.g. avoid DRF throttling interfering with auth tests).
@@ -176,6 +179,7 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "USER_ID_FIELD": "id",
     "USER_ID_CLAIM": "user_id",
+    "SIGNING_KEY": SECRET_KEY,
 }
 
 # Password reset token expires in 1 hour (Django default is 3 days).

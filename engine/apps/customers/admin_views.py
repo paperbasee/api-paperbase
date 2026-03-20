@@ -28,7 +28,7 @@ class AdminCustomerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store)
+        return qs.filter(store=ctx.store).order_by("-created_at", "id")
 
     def perform_create(self, serializer):
         ctx = get_active_store(self.request)

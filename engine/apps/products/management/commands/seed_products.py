@@ -2,7 +2,9 @@
 Management command to clear all products and seed 100 gadgets + 100 accessories.
 Usage: python manage.py seed_products
 """
+import json
 import random
+from pathlib import Path
 from decimal import Decimal
 from django.core.management.base import BaseCommand
 from django.utils.text import slugify
@@ -274,6 +276,26 @@ ACCESSORY_DESCRIPTIONS = {
     "power-bank": "Portable power bank with high capacity and fast charging to keep all your devices powered on the go.",
     "accessories-new": "Latest premium accessory designed to complement and protect your devices with style and functionality.",
 }
+
+
+def _seed_file_path(filename: str) -> Path:
+    backend_root = Path(__file__).resolve().parents[5]
+    return backend_root / "seeds" / "products" / filename
+
+
+def _load_seed_data_from_json() -> dict:
+    file_path = _seed_file_path("seed_products.json")
+    if not file_path.exists():
+        return {}
+    with file_path.open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+_seed_data = _load_seed_data_from_json()
+GADGET_PRODUCTS = _seed_data.get("GADGET_PRODUCTS", GADGET_PRODUCTS)
+ACCESSORY_PRODUCTS = _seed_data.get("ACCESSORY_PRODUCTS", ACCESSORY_PRODUCTS)
+GADGET_DESCRIPTIONS = _seed_data.get("GADGET_DESCRIPTIONS", GADGET_DESCRIPTIONS)
+ACCESSORY_DESCRIPTIONS = _seed_data.get("ACCESSORY_DESCRIPTIONS", ACCESSORY_DESCRIPTIONS)
 
 
 class Command(BaseCommand):

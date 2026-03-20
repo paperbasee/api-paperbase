@@ -10,7 +10,9 @@ Usage:
 
 from __future__ import annotations
 
+import json
 import random
+from pathlib import Path
 from decimal import Decimal
 
 from django.core.management.base import BaseCommand
@@ -49,6 +51,32 @@ PANT_FITS = [
     ("Regular", "REG"),
     ("Slim", "SLM"),
 ]
+
+
+def _seed_file_path(filename: str) -> Path:
+    backend_root = Path(__file__).resolve().parents[5]
+    return backend_root / "seeds" / "products" / filename
+
+
+def _load_seed_data_from_json() -> dict:
+    file_path = _seed_file_path("seed_apparel_demo.json")
+    if not file_path.exists():
+        return {}
+    with file_path.open("r", encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+_seed_data = _load_seed_data_from_json()
+SHIRT_NAME = _seed_data.get("SHIRT_NAME", SHIRT_NAME)
+PANT_NAME = _seed_data.get("PANT_NAME", PANT_NAME)
+ATTR_SHIRT_COLOR = _seed_data.get("ATTR_SHIRT_COLOR", ATTR_SHIRT_COLOR)
+ATTR_SHIRT_SIZE = _seed_data.get("ATTR_SHIRT_SIZE", ATTR_SHIRT_SIZE)
+ATTR_PANT_WAIST = _seed_data.get("ATTR_PANT_WAIST", ATTR_PANT_WAIST)
+ATTR_PANT_FIT = _seed_data.get("ATTR_PANT_FIT", ATTR_PANT_FIT)
+SHIRT_COLORS = [tuple(row) for row in _seed_data.get("SHIRT_COLORS", SHIRT_COLORS)]
+SHIRT_SIZES = _seed_data.get("SHIRT_SIZES", SHIRT_SIZES)
+PANT_WAISTS = _seed_data.get("PANT_WAISTS", PANT_WAISTS)
+PANT_FITS = [tuple(row) for row in _seed_data.get("PANT_FITS", PANT_FITS)]
 
 
 class Command(BaseCommand):

@@ -5,7 +5,7 @@ from .models import Inventory, StockMovement
 class StockMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = StockMovement
-        fields = ['id', 'change', 'reason', 'reference', 'created_at', 'actor']
+        fields = ['id', 'public_id', 'change', 'reason', 'reference', 'created_at', 'actor']
         read_only_fields = fields
 
 

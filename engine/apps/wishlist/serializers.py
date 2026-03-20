@@ -11,7 +11,8 @@ class WishlistItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = WishlistItem
-        fields = ['id', 'product', 'created_at']
+        fields = ['id', 'public_id', 'product', 'created_at']
+        read_only_fields = ['public_id']
 
 
 class WishlistAddSerializer(serializers.Serializer):

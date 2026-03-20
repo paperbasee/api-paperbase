@@ -4,6 +4,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.db import models
 
+from engine.core.ids import generate_public_id
 from engine.apps.products.models import Product
 from engine.apps.stores.models import Store
 from engine.apps.shipping.models import ShippingMethod, ShippingRate, ShippingZone
@@ -38,6 +39,13 @@ class Order(models.Model):
         related_name="orders",
     )
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. ord_xxx).",
+    )
     order_number = models.CharField(
         max_length=20, unique=True, db_index=True, editable=False,
     )
@@ -91,6 +99,8 @@ class Order(models.Model):
         ordering = ['-created_at']
 
     def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("order")
         # Ensure admin-created orders also get an order_number.
         if not self.order_number:
             from .utils import get_next_order_number
@@ -146,6 +156,13 @@ class OrderStatusHistory(models.Model):
 
 class OrderItem(models.Model):
     """Line item in an order with price snapshot."""
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. oit_xxx).",
+    )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.PROTECT)
     variant = models.ForeignKey(
@@ -157,6 +174,11 @@ class OrderItem(models.Model):
     )
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("orderitem")
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.order} - {self.product.name} x{self.quantity}"

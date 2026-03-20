@@ -50,7 +50,7 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store)
+        return qs.filter(store=ctx.store).order_by("-created_at", "id")
 
     def get_serializer_class(self):
         if self.action == 'list':
