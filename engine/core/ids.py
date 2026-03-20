@@ -13,6 +13,7 @@ import uuid
 _PREFIXES: dict[str, str] = {
     "user": "usr",
     "store": "str",
+    "mbr": "mbr",
     "category": "cat",
     "product": "prd",
     "variant": "var",

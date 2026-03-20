@@ -12,6 +12,11 @@ from .views import (
     PasswordResetConfirmView,
     EmailVerifyView,
     ResendVerificationView,
+    TwoFactorChallengeVerifyView,
+    TwoFactorDisableView,
+    TwoFactorSetupView,
+    TwoFactorStatusView,
+    TwoFactorVerifyEnableView,
 )
 
 urlpatterns = [
@@ -19,6 +24,11 @@ urlpatterns = [
     path("token/", StoreAwareTokenObtainPairView.as_view(), name="token_obtain_pair"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("register/", RegisterView.as_view(), name="register"),
+    path("2fa/status/", TwoFactorStatusView.as_view(), name="two_factor_status"),
+    path("2fa/setup/", TwoFactorSetupView.as_view(), name="two_factor_setup"),
+    path("2fa/verify/", TwoFactorVerifyEnableView.as_view(), name="two_factor_verify"),
+    path("2fa/challenge/verify/", TwoFactorChallengeVerifyView.as_view(), name="two_factor_challenge_verify"),
+    path("2fa/disable/", TwoFactorDisableView.as_view(), name="two_factor_disable"),
 
     # Profile
     path("me/", MeView.as_view(), name="auth_me"),

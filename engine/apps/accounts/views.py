@@ -1,13 +1,21 @@
+from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
 from rest_framework import permissions, views, status
 from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from engine.apps.billing.feature_gate import get_feature_config
 from engine.apps.stores.models import StoreMembership
+from .models import UserTwoFactor
+from .two_factor_service import (
+    begin_setup,
+    create_challenge,
+    get_or_create_profile,
+    verify_challenge,
+    verify_setup_code,
+)
 
 from .serializers import (
     MeSerializer,
@@ -16,9 +24,18 @@ from .serializers import (
     PasswordResetSerializer,
     PasswordResetConfirmSerializer,
     EmailVerificationSerializer,
+    OTPCodeSerializer,
+    TwoFactorChallengeVerifySerializer,
+    TwoFactorDisableSerializer,
     _send_verification_email,
 )
-from .throttles import LoginRateThrottle, RegisterRateThrottle, PasswordResetRateThrottle
+from .throttles import (
+    LoginRateThrottle,
+    OTPChallengeRateThrottle,
+    OTPManageRateThrottle,
+    PasswordResetRateThrottle,
+    RegisterRateThrottle,
+)
 
 User = get_user_model()
 
@@ -58,10 +75,58 @@ class StoreAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 
-class StoreAwareTokenObtainPairView(TokenObtainPairView):
-    serializer_class = StoreAwareTokenObtainPairSerializer
-    # Prevent DRF throttling from causing flaky auth tests under Django's test runner.
+def _get_first_active_store_public_id(user):
+    membership = (
+        StoreMembership.objects.select_related("store")
+        .filter(user=user, is_active=True)
+        .order_by("created_at")
+        .first()
+    )
+    return membership.store.public_id if membership else None
+
+
+def _issue_tokens(user, store_public_id=None):
+    resolved_store_id = store_public_id or _get_first_active_store_public_id(user)
+    refresh = RefreshToken.for_user(user)
+    if resolved_store_id:
+        refresh["active_store_id"] = resolved_store_id
+    access = refresh.access_token
+    if resolved_store_id:
+        access["active_store_id"] = resolved_store_id
+    return {
+        "access": str(access),
+        "refresh": str(refresh),
+        "active_store_id": resolved_store_id,
+    }
+
+
+class StoreAwareTokenObtainPairView(views.APIView):
+    permission_classes = [permissions.AllowAny]
     throttle_classes = [] if getattr(settings, "TESTING", False) else [LoginRateThrottle]
+
+    def post(self, request):
+        email = (request.data.get("email") or "").strip().lower()
+        password = request.data.get("password") or ""
+        if not email or not password:
+            return Response({"detail": "Email and password are required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = authenticate(request, username=email, password=password)
+        if not user:
+            return Response({"detail": "No active account found with the given credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        profile = get_or_create_profile(user)
+        if profile.is_enabled:
+            challenge = create_challenge(user, flow="login")
+            return Response(
+                {
+                    "2fa_required": True,
+                    "challenge_id": challenge.challenge_id,
+                    "flow": challenge.flow,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        return Response(_issue_tokens(user), status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -83,27 +148,18 @@ class RegisterView(views.APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
-        refresh = RefreshToken.for_user(user)
-        membership = (
-            StoreMembership.objects.select_related("store")
-            .filter(user=user, is_active=True)
-            .order_by("created_at")
-            .first()
-        )
-        store_public_id = membership.store.public_id if membership else None
-        if membership:
-            refresh["active_store_id"] = store_public_id
-        access = refresh.access_token
-        if membership:
-            access["active_store_id"] = store_public_id
-        return Response(
-            {
-                "access": str(access),
-                "refresh": str(refresh),
-                "active_store_id": store_public_id,
-            },
-            status=status.HTTP_201_CREATED,
-        )
+        profile = get_or_create_profile(user)
+        if profile.is_enabled:
+            challenge = create_challenge(user, flow="register")
+            return Response(
+                {
+                    "2fa_required": True,
+                    "challenge_id": challenge.challenge_id,
+                    "flow": challenge.flow,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+        return Response(_issue_tokens(user), status=status.HTTP_201_CREATED)
 
 
 # ---------------------------------------------------------------------------
@@ -180,19 +236,106 @@ class SwitchStoreView(views.APIView):
             )
 
         store_public_id = membership.store.public_id
-        refresh = RefreshToken.for_user(request.user)
-        refresh["active_store_id"] = store_public_id
-        access = refresh.access_token
-        access["active_store_id"] = store_public_id
+        profile = get_or_create_profile(request.user)
+        if profile.is_enabled:
+            challenge = create_challenge(
+                request.user,
+                flow="switch_store",
+                payload={"store_public_id": store_public_id},
+            )
+            return Response(
+                {
+                    "2fa_required": True,
+                    "challenge_id": challenge.challenge_id,
+                    "flow": challenge.flow,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
 
+        return Response(_issue_tokens(request.user, store_public_id=store_public_id), status=status.HTTP_200_OK)
+
+
+class TwoFactorStatusView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        profile = get_or_create_profile(request.user)
         return Response(
             {
-                "access": str(access),
-                "refresh": str(refresh),
-                "active_store_id": store_public_id,
-            },
-            status=status.HTTP_200_OK,
+                "is_enabled": profile.is_enabled,
+                "is_locked": profile.is_locked(),
+                "locked_until": profile.locked_until,
+            }
         )
+
+
+class TwoFactorSetupView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [OTPManageRateThrottle]
+
+    def get(self, request):
+        profile = get_or_create_profile(request.user)
+        if profile.is_enabled:
+            return Response({"detail": "2FA is already enabled."}, status=status.HTTP_400_BAD_REQUEST)
+        payload = begin_setup(request.user)
+        return Response(
+            {
+                "is_enabled": False,
+                "secret": payload["secret"],
+                "provisioning_uri": payload["provisioning_uri"],
+                "qr_code": payload["qr_code"],
+            }
+        )
+
+
+class TwoFactorVerifyEnableView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [OTPManageRateThrottle]
+
+    def post(self, request):
+        serializer = OTPCodeSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        ok, err = verify_setup_code(request.user, serializer.validated_data["code"])
+        if not ok:
+            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"is_enabled": True}, status=status.HTTP_200_OK)
+
+
+class TwoFactorDisableView(views.APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    throttle_classes = [OTPManageRateThrottle]
+
+    def post(self, request):
+        serializer = TwoFactorDisableSerializer(data=request.data, context={"request": request})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response({"is_enabled": False}, status=status.HTTP_200_OK)
+
+
+class TwoFactorChallengeVerifyView(views.APIView):
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [OTPChallengeRateThrottle]
+
+    def post(self, request):
+        serializer = TwoFactorChallengeVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        challenge, err = verify_challenge(
+            serializer.validated_data["challenge_id"],
+            serializer.validated_data["code"],
+        )
+        if challenge is None:
+            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = challenge.user
+        store_public_id = None
+        if challenge.flow == "switch_store":
+            store_public_id = challenge.payload.get("store_public_id")
+
+        return Response(_issue_tokens(user, store_public_id=store_public_id), status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------

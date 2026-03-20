@@ -12,3 +12,11 @@ class RegisterRateThrottle(AnonRateThrottle):
 
 class PasswordResetRateThrottle(AnonRateThrottle):
     scope = "auth_reset"
+
+
+class OTPChallengeRateThrottle(AnonRateThrottle):
+    scope = "auth_otp_challenge"
+
+
+class OTPManageRateThrottle(UserRateThrottle):
+    scope = "auth_otp_manage"

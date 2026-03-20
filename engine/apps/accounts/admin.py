@@ -5,7 +5,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .models import User, SuperUser, StoreUser
+from .models import User, SuperUser, StoreUser, UserTwoFactor
 from engine.apps.billing.admin import billing_user_actions
 from engine.apps.billing.models import Plan, Subscription
 
@@ -83,6 +83,7 @@ class StoreUserAdmin(BaseUserAdmin):
         "full_name",
         "subscription_plan_display",
         "is_verified",
+        "two_factor_enabled",
         "is_active",
         "store_count",
         "date_joined",
@@ -123,6 +124,11 @@ class StoreUserAdmin(BaseUserAdmin):
     def store_count(self, obj):
         return obj.store_memberships.filter(is_active=True).count()
 
+    @admin.display(description="2FA")
+    def two_factor_enabled(self, obj):
+        profile = getattr(obj, "two_factor_profile", None)
+        return bool(profile and profile.is_enabled)
+
     def save_model(self, request, obj, form, change):
         obj.is_staff = False
         obj.is_superuser = False
@@ -155,3 +161,27 @@ class StoreUserAdmin(BaseUserAdmin):
 # ---------------------------------------------------------------------------
 
 # User is not registered directly; SuperUser and StoreUser cover all accounts.
+
+
+@admin.register(UserTwoFactor)
+class UserTwoFactorAdmin(admin.ModelAdmin):
+    list_display = ["user", "is_enabled", "is_locked_view", "updated_at"]
+    search_fields = ["user__email", "user__public_id"]
+    list_filter = ["is_enabled"]
+    readonly_fields = ["created_at", "updated_at", "last_used_step"]
+    actions = ["admin_disable_2fa"]
+
+    @admin.display(description="Locked")
+    def is_locked_view(self, obj):
+        return obj.is_locked()
+
+    @admin.action(description="Disable selected user 2FA")
+    def admin_disable_2fa(self, request, queryset):
+        queryset.update(
+            is_enabled=False,
+            secret_encrypted="",
+            pending_secret_encrypted="",
+            failed_attempts=0,
+            locked_until=None,
+            last_used_step=None,
+        )

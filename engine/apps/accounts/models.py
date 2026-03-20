@@ -1,7 +1,9 @@
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
 from django.db import models
+from django.utils import timezone
 
 from engine.core.ids import generate_public_id
+from engine.core.encryption import decrypt_value, encrypt_value
 
 
 class UserManager(BaseUserManager):
@@ -117,3 +119,77 @@ class StoreUser(User):
         proxy = True
         verbose_name = "user"
         verbose_name_plural = "users"
+
+
+class UserTwoFactor(models.Model):
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="two_factor_profile",
+    )
+    secret_encrypted = models.TextField(blank=True, default="")
+    pending_secret_encrypted = models.TextField(blank=True, default="")
+    is_enabled = models.BooleanField(default=False)
+    failed_attempts = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    last_used_step = models.BigIntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["is_enabled"]),
+        ]
+
+    @property
+    def secret(self) -> str:
+        return decrypt_value(self.secret_encrypted)
+
+    @secret.setter
+    def secret(self, value: str) -> None:
+        self.secret_encrypted = encrypt_value(value or "")
+
+    @property
+    def pending_secret(self) -> str:
+        return decrypt_value(self.pending_secret_encrypted)
+
+    @pending_secret.setter
+    def pending_secret(self, value: str) -> None:
+        self.pending_secret_encrypted = encrypt_value(value or "")
+
+    def is_locked(self) -> bool:
+        return bool(self.locked_until and self.locked_until > timezone.now())
+
+
+class UserTwoFactorChallenge(models.Model):
+    class Flow(models.TextChoices):
+        LOGIN = "login", "Login"
+        REGISTER = "register", "Register"
+        SWITCH_STORE = "switch_store", "Switch Store"
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="two_factor_challenges",
+    )
+    flow = models.CharField(max_length=20, choices=Flow.choices)
+    challenge_id = models.CharField(max_length=64, unique=True, db_index=True)
+    payload = models.JSONField(default=dict, blank=True)
+    expires_at = models.DateTimeField()
+    consumed_at = models.DateTimeField(null=True, blank=True)
+    failed_attempts = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["user", "flow"]),
+            models.Index(fields=["expires_at"]),
+        ]
+
+    def is_expired(self) -> bool:
+        return self.expires_at <= timezone.now()
+
+    def is_locked(self) -> bool:
+        return bool(self.locked_until and self.locked_until > timezone.now())

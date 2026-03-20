@@ -11,6 +11,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import serializers
 
 from engine.apps.stores.models import StoreMembership
+from .two_factor_service import disable_2fa
 
 User = get_user_model()
 
@@ -319,3 +320,33 @@ class EmailVerificationSerializer(serializers.Serializer):
         user.is_verified = True
         user.save(update_fields=["is_verified", "updated_at"])
         return user
+
+
+class OTPCodeSerializer(serializers.Serializer):
+    code = serializers.CharField(required=True, min_length=6, max_length=8)
+
+
+class TwoFactorDisableSerializer(serializers.Serializer):
+    password = serializers.CharField(
+        required=True,
+        write_only=True,
+        style={"input_type": "password"},
+    )
+    code = serializers.CharField(required=True, min_length=6, max_length=8)
+
+    def validate_password(self, value):
+        user = self.context["request"].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect.")
+        return value
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        ok, err = disable_2fa(user, self.validated_data["code"])
+        if not ok:
+            raise serializers.ValidationError({"code": err})
+        return {"disabled": True}
+
+
+class TwoFactorChallengeVerifySerializer(OTPCodeSerializer):
+    challenge_id = serializers.CharField(required=True)

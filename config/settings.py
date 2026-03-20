@@ -160,6 +160,8 @@ REST_FRAMEWORK = {
         "auth_token": "10/min",        # login attempts
         "auth_register": "10/min",     # account creation
         "auth_reset": "5/min",         # password reset requests
+        "auth_otp_challenge": "12/min",  # OTP challenge verification
+        "auth_otp_manage": "20/min",     # OTP setup/disable actions
         "direct_order": "30/hour",     # unauthenticated order placement
     },
 }
@@ -190,6 +192,8 @@ PASSWORD_RESET_TIMEOUT = 3600
 # Basic session/CSRF configuration suitable for local development
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_AGE = 60 * 60 * 8
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # Admin URL path
 ADMIN_URL_PATH = "admin/"
