@@ -11,7 +11,7 @@ from engine.apps.products.admin_views import (
     AdminProductAttributeViewSet,
     AdminProductAttributeValueViewSet,
 )
-from engine.apps.notifications.admin_views import AdminNotificationViewSet, AdminSystemNotificationViewSet
+from engine.apps.notifications.admin_views import AdminNotificationViewSet, AdminStaffInboxNotificationViewSet
 from engine.apps.support.admin_views import AdminContactSubmissionViewSet, AdminSupportTicketViewSet
 from engine.apps.cart.admin_views import AdminCartViewSet
 from engine.apps.wishlist.admin_views import AdminWishlistItemViewSet
@@ -50,7 +50,7 @@ router.register(
 router.register(r'parent-categories', AdminParentCategoryViewSet, basename='admin-parent-categories')
 router.register(r'categories', AdminCategoryViewSet, basename='admin-categories')
 router.register(r'notifications', AdminNotificationViewSet, basename='admin-notifications')
-router.register(r'system-notifications', AdminSystemNotificationViewSet, basename='admin-system-notifications')
+router.register(r'system-notifications', AdminStaffInboxNotificationViewSet, basename='admin-system-notifications')
 router.register(r'contacts', AdminContactSubmissionViewSet, basename='admin-contacts')
 router.register(r'support-tickets', AdminSupportTicketViewSet, basename='admin-support-tickets')
 router.register(r'carts', AdminCartViewSet, basename='admin-carts')

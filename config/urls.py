@@ -27,6 +27,7 @@ api_v1_patterns = [
     path('reviews/', include('engine.apps.reviews.urls')),
     path('customers/', include('engine.apps.customers.urls')),
     path('notifications/', include('engine.apps.notifications.urls')),
+    path('system-notifications/', include('engine.apps.notifications.system_urls')),
     # Backwards-compat alias (old name) + preferred support namespace.
     path('contact/', include('engine.apps.support.urls')),
     path('support/', include('engine.apps.support.urls')),

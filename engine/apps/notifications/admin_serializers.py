@@ -1,13 +1,13 @@
 from rest_framework import serializers
 
-from .models import Notification, SystemNotification
+from .models import Notification, StaffInboxNotification
 
 
-class AdminSystemNotificationSerializer(serializers.ModelSerializer):
+class AdminStaffInboxNotificationSerializer(serializers.ModelSerializer):
     user_public_id = serializers.CharField(source="user.public_id", read_only=True, allow_null=True)
 
     class Meta:
-        model = SystemNotification
+        model = StaffInboxNotification
         fields = ['public_id', 'user_public_id', 'message_type', 'title', 'payload', 'is_read', 'created_at']
         read_only_fields = ['public_id', 'user_public_id', 'message_type', 'title', 'payload', 'created_at']
 

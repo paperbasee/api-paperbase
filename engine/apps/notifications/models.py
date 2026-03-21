@@ -1,10 +1,11 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 from engine.core.ids import generate_public_id
 
 
-class SystemNotification(models.Model):
+class StaffInboxNotification(models.Model):
     """
     Admin dashboard notification for events (new order, low stock, new customer, etc.).
     When user is null, the notification is global for all staff.
@@ -27,7 +28,7 @@ class SystemNotification(models.Model):
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='system_notifications',
+        related_name='staff_inbox_notifications',
         help_text="Null = visible to all staff",
     )
     message_type = models.CharField(max_length=30, choices=MessageType.choices, default=MessageType.OTHER)
@@ -46,6 +47,67 @@ class SystemNotification(models.Model):
 
     def __str__(self):
         return f"{self.get_message_type_display()}: {self.title}"
+
+
+class SystemNotification(models.Model):
+    """
+    Global platform notification for the dashboard banner (not store- or user-scoped).
+    Managed in Django Admin only; exposed read-only via API for authenticated dashboard users.
+    """
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. ntf_xxx).",
+    )
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    cta_text = models.CharField(max_length=100, blank=True, null=True)
+    cta_url = models.URLField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+    start_at = models.DateTimeField()
+    end_at = models.DateTimeField(blank=True, null=True)
+    priority = models.IntegerField(
+        default=0,
+        help_text="Higher values win when multiple notifications are active.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-priority', '-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("notification")
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_currently_active(self) -> bool:
+        if not self.is_active:
+            return False
+        now = timezone.now()
+        if now < self.start_at:
+            return False
+        if self.end_at is not None and now > self.end_at:
+            return False
+        return True
+
+    @classmethod
+    def active_queryset(cls, now=None):
+        """Notifications visible at ``now`` (default: timezone.now())."""
+        if now is None:
+            now = timezone.now()
+        return cls.objects.filter(
+            is_active=True,
+            start_at__lte=now,
+        ).filter(
+            models.Q(end_at__isnull=True) | models.Q(end_at__gte=now),
+        )
 
 
 class Notification(models.Model):
@@ -91,7 +153,6 @@ class Notification(models.Model):
         """Check if notification is active and within date range."""
         if not self.is_active:
             return False
-        from django.utils import timezone
         now = timezone.now()
         if self.start_date and now < self.start_date:
             return False

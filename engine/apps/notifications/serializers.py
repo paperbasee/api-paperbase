@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Notification
+from .models import Notification, SystemNotification
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -14,3 +14,11 @@ class NotificationSerializer(serializers.ModelSerializer):
             'public_id', 'text', 'notificationType', 'isCurrentlyActive',
             'link', 'link_text', 'order', 'created_at',
         ]
+
+
+class ActiveSystemNotificationSerializer(serializers.ModelSerializer):
+    """Read-only global banner payload; never exposes internal PK."""
+
+    class Meta:
+        model = SystemNotification
+        fields = ("public_id", "title", "message", "cta_text", "cta_url")

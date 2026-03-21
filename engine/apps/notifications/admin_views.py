@@ -5,20 +5,20 @@ from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
-from .models import Notification, SystemNotification
-from .admin_serializers import AdminNotificationSerializer, AdminSystemNotificationSerializer
+from .models import Notification, StaffInboxNotification
+from .admin_serializers import AdminNotificationSerializer, AdminStaffInboxNotificationSerializer
 
 
-class AdminSystemNotificationViewSet(
+class AdminStaffInboxNotificationViewSet(
     mixins.ListModelMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     viewsets.GenericViewSet,
 ):
-    """List/retrieve/update (mark read) system notifications for admin dashboard."""
+    """List/retrieve/update (mark read) staff inbox notifications for admin dashboard."""
     permission_classes = [IsDashboardUser]
-    serializer_class = AdminSystemNotificationSerializer
-    queryset = SystemNotification.objects.all().order_by('-created_at')
+    serializer_class = AdminStaffInboxNotificationSerializer
+    queryset = StaffInboxNotification.objects.all().order_by('-created_at')
     lookup_field = 'public_id'
 
     def get_queryset(self):
