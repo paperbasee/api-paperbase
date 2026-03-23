@@ -18,7 +18,7 @@ from engine.apps.orders.admin_serializers import AdminOrderListSerializer
 from engine.apps.billing.feature_gate import require_feature
 from engine.apps.products.models import Product, Category
 from engine.apps.support.models import SupportTicket
-from engine.apps.notifications.models import Notification
+from engine.apps.notifications.models import StorefrontCTA
 from engine.apps.cart.models import Cart, CartItem
 from engine.apps.wishlist.models import WishlistItem
 from engine.apps.analytics.models import StoreDashboardStatsSnapshot
@@ -35,7 +35,7 @@ class DashboardStatsView(APIView):
         product_qs = Product.objects.all()
         category_qs = Category.objects.all()
         support_ticket_qs = SupportTicket.objects.all()
-        notification_qs = Notification.objects.filter(is_active=True)
+        notification_qs = StorefrontCTA.objects.filter(is_active=True)
         cart_qs = Cart.objects.filter(items__isnull=False)
         wishlist_qs = WishlistItem.objects.all()
 

@@ -3,7 +3,7 @@ from rest_framework.test import APIClient
 
 from engine.apps.stores.models import Domain, Store, StoreMembership
 from engine.apps.products.models import Category, Product
-from engine.apps.notifications.models import Notification
+from engine.apps.notifications.models import StorefrontCTA
 
 from django.contrib.auth import get_user_model
 
@@ -74,11 +74,11 @@ class CrossTenantProductIsolationTests(TestCase):
         self.product_a = make_product(self.store_a, self.cat_a, name="Product Alpha")
         self.product_b = make_product(self.store_b, self.cat_b, name="Product Beta")
 
-        self.notif_a = Notification.objects.create(
-            store=self.store_a, text="Banner Store A", is_active=True
+        self.notif_a = StorefrontCTA.objects.create(
+            store=self.store_a, cta_text="Banner Store A", is_active=True
         )
-        self.notif_b = Notification.objects.create(
-            store=self.store_b, text="Banner Store B", is_active=True
+        self.notif_b = StorefrontCTA.objects.create(
+            store=self.store_b, cta_text="Banner Store B", is_active=True
         )
 
     def tearDown(self):

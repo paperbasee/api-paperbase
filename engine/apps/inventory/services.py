@@ -28,13 +28,13 @@ def adjust_stock(inventory, change, reason='adjustment', reference='', actor=Non
 def _create_low_stock_notification(inventory):
     """Create a system notification for low stock (visible to all staff when user=null)."""
     try:
-        from engine.apps.notifications.models import StaffInboxNotification
+        from engine.apps.notifications.models import StaffNotification
         title = f"Low stock: {inventory.product.name}"
         if inventory.variant_id:
             title += f" ({inventory.variant.sku or f'Variant {inventory.variant_id}'})"
-        StaffInboxNotification.objects.create(
+        StaffNotification.objects.create(
             user=None,
-            message_type=StaffInboxNotification.MessageType.LOW_STOCK,
+            message_type=StaffNotification.MessageType.LOW_STOCK,
             title=title,
             payload={
                 'product_id': str(inventory.product_id),

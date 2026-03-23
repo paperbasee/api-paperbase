@@ -1,10 +1,10 @@
 from django.contrib import admin
 
-from .models import Notification, StaffInboxNotification, SystemNotification
+from .models import PlatformNotification, StaffNotification, StorefrontCTA
 
 
-@admin.register(StaffInboxNotification)
-class StaffInboxNotificationAdmin(admin.ModelAdmin):
+@admin.register(StaffNotification)
+class StaffNotificationAdmin(admin.ModelAdmin):
     list_display = ['title', 'message_type', 'user', 'is_read', 'created_at']
     list_filter = ['message_type', 'is_read']
     list_editable = ['is_read']
@@ -12,8 +12,8 @@ class StaffInboxNotificationAdmin(admin.ModelAdmin):
     search_fields = ['title', 'public_id']
 
 
-@admin.register(SystemNotification)
-class SystemNotificationAdmin(admin.ModelAdmin):
+@admin.register(PlatformNotification)
+class PlatformNotificationAdmin(admin.ModelAdmin):
     list_display = [
         'title', 'is_active', 'priority', 'start_at', 'end_at', 'public_id', 'created_at',
     ]
@@ -22,7 +22,7 @@ class SystemNotificationAdmin(admin.ModelAdmin):
     readonly_fields = ['public_id', 'created_at', 'updated_at']
     fieldsets = (
         ('Content', {
-            'fields': ('title', 'message', 'is_active', 'priority'),
+            'fields': ('title', 'message', 'is_active', 'priority', 'daily_limit'),
         }),
         ('Call to action (optional)', {
             'fields': ('cta_text', 'cta_url'),
@@ -38,20 +38,20 @@ class SystemNotificationAdmin(admin.ModelAdmin):
     )
 
 
-@admin.register(Notification)
-class NotificationAdmin(admin.ModelAdmin):
+@admin.register(StorefrontCTA)
+class StorefrontCTAAdmin(admin.ModelAdmin):
     list_display = [
-        'text', 'store', 'notification_type', 'is_active', 'order', 'start_date', 'end_date', 'created_at',
+        'cta_text', 'store', 'notification_type', 'is_active', 'order', 'start_date', 'end_date', 'created_at',
     ]
     list_filter = ['notification_type', 'is_active', 'created_at', 'store']
-    search_fields = ['text', 'public_id']
+    search_fields = ['cta_text', 'public_id']
     autocomplete_fields = ['store']
     fieldsets = (
         ('Store', {
             'fields': ('store',),
         }),
         ('Content', {
-            'fields': ('text', 'notification_type', 'is_active', 'order')
+            'fields': ('cta_text', 'notification_type', 'is_active', 'order')
         }),
         ('Link (Optional)', {
             'fields': ('link', 'link_text'),

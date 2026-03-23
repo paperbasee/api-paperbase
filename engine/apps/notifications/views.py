@@ -3,7 +3,7 @@ from rest_framework.generics import ListAPIView
 
 from engine.core.tenancy import get_active_store, require_resolved_store
 
-from .models import Notification
+from .models import StorefrontCTA
 from .serializers import NotificationSerializer
 
 
@@ -23,7 +23,7 @@ class ActiveNotificationListView(_StorefrontTenantMixin, ListAPIView):
 
     def get_queryset(self):
         ctx = get_active_store(self.request)
-        qs = Notification.objects.filter(store=ctx.store, is_active=True)
+        qs = StorefrontCTA.objects.filter(store=ctx.store, is_active=True)
         from django.utils import timezone
 
         now = timezone.now()

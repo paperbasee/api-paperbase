@@ -18,7 +18,7 @@ from engine.apps.orders.models import Order
 from engine.apps.customers.models import Customer, CustomerAddress
 from engine.apps.coupons.models import Coupon
 from engine.apps.cart.models import Cart, CartItem
-from engine.apps.notifications.models import Notification
+from engine.apps.notifications.models import StorefrontCTA
 
 User = get_user_model()
 
@@ -792,11 +792,11 @@ class CrossTenantAdminIsolationTests(TestCase):
         self.coupon_a = _make_coupon(self.store_a)
         self.coupon_b = _make_coupon(self.store_b)
 
-        self.notif_a = Notification.objects.create(
-            store=self.store_a, text="CTA Store A", is_active=True
+        self.notif_a = StorefrontCTA.objects.create(
+            store=self.store_a, cta_text="CTA Store A", is_active=True
         )
-        self.notif_b = Notification.objects.create(
-            store=self.store_b, text="CTA Store B", is_active=True
+        self.notif_b = StorefrontCTA.objects.create(
+            store=self.store_b, cta_text="CTA Store B", is_active=True
         )
 
     def _auth_as(self, user, store):
