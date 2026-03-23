@@ -27,7 +27,7 @@ class AdminCustomerAddressSerializer(serializers.ModelSerializer):
 class AdminCustomerSerializer(serializers.ModelSerializer):
     user_public_id = serializers.CharField(source="user.public_id", read_only=True, allow_null=True)
     user_email = serializers.CharField(source="user.email", read_only=True, allow_null=True)
-    user_username = serializers.CharField(source="user.username", read_only=True, allow_null=True)
+    user_username = serializers.SerializerMethodField()
     default_shipping_address_public_id = serializers.CharField(
         source="default_shipping_address.public_id", read_only=True, allow_null=True
     )
@@ -58,11 +58,20 @@ class AdminCustomerSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["public_id", "created_at", "updated_at"]
 
+    def get_user_username(self, obj):
+        user = getattr(obj, "user", None)
+        if not user:
+            return None
+        full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+        if full_name:
+            return full_name
+        return getattr(user, "email", None)
+
 
 class AdminCustomerListSerializer(serializers.ModelSerializer):
     user_public_id = serializers.CharField(source="user.public_id", read_only=True, allow_null=True)
     user_email = serializers.CharField(source="user.email", read_only=True, allow_null=True)
-    user_username = serializers.CharField(source="user.username", read_only=True, allow_null=True)
+    user_username = serializers.SerializerMethodField()
 
     class Meta:
         model = Customer
@@ -80,3 +89,12 @@ class AdminCustomerListSerializer(serializers.ModelSerializer):
             "extra_data",
             "created_at",
         ]
+
+    def get_user_username(self, obj):
+        user = getattr(obj, "user", None)
+        if not user:
+            return None
+        full_name = f"{getattr(user, 'first_name', '')} {getattr(user, 'last_name', '')}".strip()
+        if full_name:
+            return full_name
+        return getattr(user, "email", None)

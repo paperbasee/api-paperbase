@@ -1,6 +1,8 @@
 import logging
+from datetime import timedelta
 
 import requests as http_requests
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import viewsets, mixins, status
 from rest_framework.decorators import action
@@ -27,6 +29,16 @@ from .admin_serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_ORDER_STATUSES = {
+    Order.Status.PENDING,
+    Order.Status.CONFIRMED,
+    Order.Status.PROCESSING,
+    Order.Status.SHIPPED,
+    Order.Status.DELIVERED,
+    Order.Status.CANCELLED,
+    Order.Status.RETURNED,
+}
 
 
 class AdminOrderViewSet(
@@ -78,7 +90,32 @@ class AdminOrderViewSet(
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store)
+        qs = qs.filter(store=ctx.store)
+
+        status_value = (self.request.query_params.get("status") or "").strip().lower()
+        if status_value in ALLOWED_ORDER_STATUSES:
+            qs = qs.filter(status=status_value)
+
+        date_range = (self.request.query_params.get("date_range") or "").strip().lower()
+        if date_range == "today":
+            qs = qs.filter(created_at__date=timezone.localdate())
+        elif date_range == "last_7_days":
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=7))
+        elif date_range == "last_30_days":
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=30))
+
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(order_number__icontains=search)
+                | Q(public_id__icontains=search)
+                | Q(shipping_name__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(email__icontains=search)
+                | Q(customer__name__icontains=search)
+            )
+
+        return qs
 
     def get_serializer_context(self):
         context = super().get_serializer_context()

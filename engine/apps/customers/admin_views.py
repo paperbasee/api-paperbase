@@ -1,6 +1,9 @@
 from decimal import Decimal
+from datetime import timedelta
 
 from django.db.models import Count, Min, Max, Sum
+from django.db.models import Q
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -34,7 +37,28 @@ class AdminCustomerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store).order_by("-created_at", "id")
+        qs = qs.filter(store=ctx.store).order_by("-created_at", "id")
+
+        joined_date = (self.request.query_params.get("joined_date") or "").strip().lower()
+        if joined_date == "today":
+            qs = qs.filter(created_at__date=timezone.localdate())
+        elif joined_date == "last_7_days":
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=7))
+        elif joined_date == "last_30_days":
+            qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=30))
+
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(user__email__icontains=search)
+                | Q(user__first_name__icontains=search)
+                | Q(user__last_name__icontains=search)
+            )
+
+        return qs
 
     def perform_create(self, serializer):
         ctx = get_active_store(self.request)

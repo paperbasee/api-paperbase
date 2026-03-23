@@ -19,7 +19,7 @@ class SupportTicket(models.Model):
     )
 
     class Status(models.TextChoices):
-        OPEN = "open", "Open"
+        NEW = "new", "New"
         IN_PROGRESS = "in_progress", "In progress"
         RESOLVED = "resolved", "Resolved"
         CLOSED = "closed", "Closed"
@@ -48,7 +48,7 @@ class SupportTicket(models.Model):
     order_number = models.CharField(max_length=64, blank=True, default="")
     category = models.CharField(max_length=30, choices=Category.choices, default=Category.GENERAL)
     priority = models.CharField(max_length=20, choices=Priority.choices, default=Priority.MEDIUM)
-    status = models.CharField(max_length=20, choices=Status.choices, default=Status.OPEN)
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.NEW)
     internal_notes = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

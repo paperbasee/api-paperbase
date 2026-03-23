@@ -34,3 +34,9 @@ class AdminSupportTicketSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["public_id", "store_public_id", "created_at", "updated_at", "attachments"]
+
+    def validate_status(self, value):
+        # Backward compatibility for older dashboard clients.
+        if value == "open":
+            return "new"
+        return value

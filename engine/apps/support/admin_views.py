@@ -1,4 +1,5 @@
 from rest_framework import viewsets, mixins
+from django.db.models import Q
 
 from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
@@ -27,7 +28,29 @@ class AdminSupportTicketViewSet(
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store)
+        qs = qs.filter(store=ctx.store)
+
+        status_value = (self.request.query_params.get("status") or "").strip().lower()
+        if status_value == "open":
+            status_value = "new"
+        if status_value in {"new", "in_progress", "resolved", "closed"}:
+            qs = qs.filter(status=status_value)
+
+        priority_value = (self.request.query_params.get("priority") or "").strip().lower()
+        if priority_value in {"low", "medium", "high", "urgent"}:
+            qs = qs.filter(priority=priority_value)
+
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(subject__icontains=search)
+                | Q(public_id__icontains=search)
+                | Q(name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(phone__icontains=search)
+            )
+
+        return qs
 
     def perform_destroy(self, instance):
         public_id = instance.public_id

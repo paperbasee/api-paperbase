@@ -1,4 +1,7 @@
+from decimal import Decimal, InvalidOperation
+
 from django.db.models import Count, Sum
+from django.db.models import Q
 from django.utils.text import slugify
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -50,7 +53,58 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store).order_by("-created_at", "id")
+        qs = qs.filter(store=ctx.store).order_by("-created_at", "id")
+
+        status_value = (self.request.query_params.get("status") or "").strip().lower()
+        if status_value == "active":
+            qs = qs.filter(is_active=True)
+        elif status_value == "inactive":
+            qs = qs.filter(is_active=False)
+
+        stock_filter = (self.request.query_params.get("stock") or "").strip().lower()
+        if stock_filter == "in_stock":
+            qs = qs.filter(
+                Q(_admin_variant_count=0, stock__gt=0)
+                | Q(_admin_variant_count__gt=0, _admin_variant_stock_sum__gt=0)
+            )
+        elif stock_filter == "out_of_stock":
+            qs = qs.filter(
+                Q(_admin_variant_count=0, stock=0)
+                | Q(_admin_variant_count__gt=0, _admin_variant_stock_sum__lte=0)
+            )
+        elif stock_filter == "low_stock":
+            qs = qs.filter(
+                Q(_admin_variant_count=0, stock__gt=0, stock__lte=5)
+                | Q(
+                    _admin_variant_count__gt=0,
+                    _admin_variant_stock_sum__gt=0,
+                    _admin_variant_stock_sum__lte=5,
+                )
+            )
+
+        category_public_id = (self.request.query_params.get("category") or "").strip()
+        if category_public_id:
+            qs = qs.filter(category__public_id=category_public_id)
+
+        try:
+            if "price_min" in self.request.query_params:
+                price_min = Decimal((self.request.query_params.get("price_min") or "").strip())
+                qs = qs.filter(price__gte=price_min)
+            if "price_max" in self.request.query_params:
+                price_max = Decimal((self.request.query_params.get("price_max") or "").strip())
+                qs = qs.filter(price__lte=price_max)
+        except (InvalidOperation, ValueError):
+            pass
+
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(sku__icontains=search)
+                | Q(brand__icontains=search)
+            )
+
+        return qs
 
     def get_serializer_class(self):
         if self.action == 'list':
