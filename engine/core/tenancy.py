@@ -41,28 +41,28 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
     Resolve the active store for the current request.
 
     Priority:
-    1) Explicit X-Store-ID header (for dashboard / tools)
-    2) JWT claim `active_store_id` (if present on the user)
+    1) Explicit X-Store-Public-ID header (for dashboard / tools)
+    2) JWT claim `active_store_public_id` (if present on the user)
     3) Store derived from the host via middleware.
     """
     store: Optional[Store] = None
     membership: Optional[StoreMembership] = None
 
     # 1) Explicit header — public_id only.
-    header_store_id = request.headers.get("X-Store-ID") or request.headers.get("x-store-id")
-    if header_store_id:
+    header_store_public_id = request.headers.get("X-Store-Public-ID") or request.headers.get("x-store-public-id")
+    if header_store_public_id:
         try:
-            store = Store.objects.get(public_id=header_store_id, is_active=True)
+            store = Store.objects.get(public_id=header_store_public_id, is_active=True)
         except (Store.DoesNotExist, ValueError):
             store = None
 
-    # 2) JWT claim `active_store_id` — public_id only.
+    # 2) JWT claim `active_store_public_id` — public_id only.
     # In DRF SimpleJWT, the validated token is available as `request.auth`.
     if store is None and getattr(request, "auth", None):
-        active_store_id = request.auth.get("active_store_id")  # type: ignore[union-attr]
-        if active_store_id:
+        active_store_public_id = request.auth.get("active_store_public_id")  # type: ignore[union-attr]
+        if active_store_public_id:
             try:
-                store = Store.objects.get(public_id=active_store_id, is_active=True)
+                store = Store.objects.get(public_id=active_store_public_id, is_active=True)
             except (Store.DoesNotExist, ValueError):
                 store = None
 
@@ -85,7 +85,7 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
 
 def require_resolved_store(request: HttpRequest) -> None:
     """
-    DRF storefront views: require a resolved store (host, X-Store-ID, or JWT active_store_id).
+    DRF storefront views: require a resolved store (host, X-Store-Public-ID, or JWT active_store_public_id).
     Raises PermissionDenied with the same message as TenantApiGuardMiddleware.
     """
     from rest_framework.exceptions import PermissionDenied
@@ -131,12 +131,13 @@ class TenantApiGuardMiddleware(MiddlewareMixin):
             return None
         if any(path.startswith(e) for e in exempt):
             return None
-        # Dashboard APIs: tenant comes from X-Store-ID / JWT, not Host.
+        # Dashboard APIs: tenant comes from X-Store-Public-ID / JWT, not Host.
         if path.startswith("/api/v1/admin/"):
             return None
         if path.startswith("/api/v1/stores/"):
             return None
-        if getattr(request, "store", None) is None:
+        # Accept tenant context resolved from Host, X-Store-Public-ID, or JWT claim.
+        if get_active_store(request).store is None:
             return JsonResponse({"detail": "Unknown tenant host."}, status=403)
         return None
 

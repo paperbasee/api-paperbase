@@ -14,6 +14,8 @@ class AdminWishlistItemViewSet(
     permission_classes = [IsDashboardUser]
     serializer_class = AdminWishlistItemSerializer
     queryset = WishlistItem.objects.select_related('user', 'product').all()
+    lookup_field = "public_id"
+    lookup_url_kwarg = "public_id"
 
     def get_queryset(self):
         qs = super().get_queryset()

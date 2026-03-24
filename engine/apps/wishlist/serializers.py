@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from engine.apps.products.serializers import ProductListSerializer
-from engine.apps.products.models import Product
+from engine.core.tenancy import get_active_store
 
 from .models import WishlistItem
 
@@ -20,6 +20,8 @@ class WishlistAddSerializer(serializers.Serializer):
     product_public_id = serializers.CharField()
 
     def validate_product_public_id(self, value):
-        if not Product.objects.filter(public_id=value, is_active=True).exists():
-            raise serializers.ValidationError('Product not found.')
+        request = self.context.get("request")
+        ctx = get_active_store(request) if request else None
+        if not ctx or not ctx.store:
+            raise serializers.ValidationError("Product not found.")
         return value

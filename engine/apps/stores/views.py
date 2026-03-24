@@ -281,8 +281,8 @@ class StoreSettingsViewSet(
         refresh = RefreshToken.for_user(request.user)
         access = refresh.access_token
         if next_store_public_id:
-            refresh["active_store_id"] = next_store_public_id
-            access["active_store_id"] = next_store_public_id
+            refresh["active_store_public_id"] = next_store_public_id
+            access["active_store_public_id"] = next_store_public_id
 
         return Response(
             {

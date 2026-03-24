@@ -9,15 +9,15 @@ class StoreEventsConsumer(AsyncWebsocketConsumer):
     """
     Real-time store events. Requires:
     - Host resolves to a verified Domain (scope[\"store_public_id\"])
-    - JWT active_store_id matches that store
+    - JWT active_store_public_id matches that store
     - Authenticated user
     """
 
     async def connect(self):
         store_pid = self.scope.get("store_public_id")
-        token_store = self.scope.get("ws_active_store_id")
+        token_store = self.scope.get("ws_active_store_public_id")
         user = self.scope.get("user")
-        # Same rule as DRF PermissionDenied: JWT active_store_id must match Host-resolved store.
+        # Same rule as DRF PermissionDenied: JWT active_store_public_id must match Host-resolved store.
         if (
             not store_pid
             or not token_store

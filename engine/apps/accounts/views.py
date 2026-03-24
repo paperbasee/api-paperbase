@@ -50,8 +50,8 @@ User = get_user_model()
 
 class StoreAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Extend JWT payload with `active_store_id` claim (store.public_id).
-    Also add `active_store_id` to response body for frontend routing.
+    Extend JWT payload with `active_store_public_id` claim (store.public_id).
+    Also add `active_store_public_id` to response body for frontend routing.
     """
 
     @classmethod
@@ -64,7 +64,7 @@ class StoreAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
             .first()
         )
         if membership:
-            token["active_store_id"] = membership.store.public_id
+            token["active_store_public_id"] = membership.store.public_id
         return token
 
     def validate(self, attrs):
@@ -75,7 +75,7 @@ class StoreAwareTokenObtainPairSerializer(TokenObtainPairSerializer):
             .order_by("created_at")
             .first()
         )
-        data["active_store_id"] = membership.store.public_id if membership else None
+        data["active_store_public_id"] = membership.store.public_id if membership else None
         return data
 
 
@@ -90,17 +90,17 @@ def _get_first_active_store_public_id(user):
 
 
 def _issue_tokens(user, store_public_id=None):
-    resolved_store_id = store_public_id or _get_first_active_store_public_id(user)
+    resolved_store_public_id = store_public_id or _get_first_active_store_public_id(user)
     refresh = RefreshToken.for_user(user)
-    if resolved_store_id:
-        refresh["active_store_id"] = resolved_store_id
+    if resolved_store_public_id:
+        refresh["active_store_public_id"] = resolved_store_public_id
     access = refresh.access_token
-    if resolved_store_id:
-        access["active_store_id"] = resolved_store_id
+    if resolved_store_public_id:
+        access["active_store_public_id"] = resolved_store_public_id
     return {
         "access": str(access),
         "refresh": str(refresh),
-        "active_store_id": resolved_store_id,
+        "active_store_public_id": resolved_store_public_id,
     }
 
 
@@ -213,24 +213,24 @@ class FeaturesView(views.APIView):
 class SwitchStoreView(views.APIView):
     """
     POST /auth/switch-store/
-    Re-issue JWT tokens with a different `active_store_id` claim.
-    Requires `store_id` (public_id of the target store) in the request body.
+    Re-issue JWT tokens with a different `active_store_public_id` claim.
+    Requires `store_public_id` (public_id of the target store) in the request body.
     """
 
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        store_id = request.data.get("store_id")
-        if not store_id:
+        store_public_id = request.data.get("store_public_id")
+        if not store_public_id:
             return Response(
-                {"detail": "store_id is required."},
+                {"detail": "store_public_id is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             membership = StoreMembership.objects.select_related("store").get(
                 user=request.user,
-                store__public_id=store_id,
+                store__public_id=store_public_id,
                 is_active=True,
             )
         except (StoreMembership.DoesNotExist, ValueError):

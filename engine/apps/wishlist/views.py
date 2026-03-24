@@ -1,4 +1,5 @@
 from rest_framework import status
+from rest_framework.exceptions import NotFound
 from rest_framework.generics import ListAPIView
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
@@ -6,6 +7,7 @@ from rest_framework.views import APIView
 
 from engine.apps.analytics.service import meta_conversions
 from engine.apps.products.models import Product
+from engine.core.tenancy import get_active_store
 
 from .models import WishlistItem
 from .serializers import WishlistAddSerializer, WishlistItemSerializer
@@ -36,9 +38,19 @@ class WishlistAddView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        ser = WishlistAddSerializer(data=request.data)
+        ctx = get_active_store(request)
+        if not ctx.store:
+            raise NotFound()
+        ser = WishlistAddSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
-        product = Product.objects.get(public_id=ser.validated_data['product_public_id'])
+        product = Product.objects.filter(
+            public_id=ser.validated_data['product_public_id'],
+            store=ctx.store,
+            is_active=True,
+            status=Product.Status.ACTIVE,
+        ).first()
+        if not product:
+            raise NotFound()
         filt = _wishlist_filter(request)
         _, created = WishlistItem.objects.get_or_create(product=product, **filt)
         if created:
@@ -54,9 +66,17 @@ class WishlistRemoveView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, product_public_id):
-        product = Product.objects.filter(public_id=product_public_id).first()
+        ctx = get_active_store(request)
+        if not ctx.store:
+            raise NotFound()
+        product = Product.objects.filter(
+            public_id=product_public_id,
+            store=ctx.store,
+            is_active=True,
+            status=Product.Status.ACTIVE,
+        ).first()
         if not product:
-            return Response({'status': 'removed', 'deleted': False})
+            raise NotFound()
         deleted, _ = WishlistItem.objects.filter(
             product=product, **_wishlist_filter(request)
         ).delete()

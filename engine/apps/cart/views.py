@@ -1,11 +1,13 @@
 from rest_framework import status
 from rest_framework.generics import RetrieveAPIView
+from rest_framework.exceptions import NotFound
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from engine.apps.analytics.service import meta_conversions
 from engine.apps.products.models import Product
+from engine.core.tenancy import get_active_store
 
 from .models import Cart, CartItem
 from .serializers import CartAddSerializer, CartItemSerializer, CartSerializer
@@ -40,10 +42,20 @@ class CartAddView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        ser = CartAddSerializer(data=request.data)
+        ctx = get_active_store(request)
+        if not ctx.store:
+            raise NotFound()
+        ser = CartAddSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         cart = get_or_create_cart(request)
-        product = Product.objects.get(public_id=ser.validated_data['product_public_id'])
+        product = Product.objects.filter(
+            public_id=ser.validated_data['product_public_id'],
+            store=ctx.store,
+            is_active=True,
+            status=Product.Status.ACTIVE,
+        ).first()
+        if not product:
+            raise NotFound()
         quantity = ser.validated_data['quantity']
         size = (ser.validated_data.get('size') or '').strip()
 
@@ -67,12 +79,12 @@ class CartUpdateView(APIView):
     """Update quantity of a cart item."""
     permission_classes = [AllowAny]
 
-    def patch(self, request, item_id):
+    def patch(self, request, item_public_id):
         cart = get_or_create_cart(request)
         quantity = request.data.get('quantity')
         if quantity is None or not isinstance(quantity, int) or quantity < 1:
             return Response({'quantity': ['Must be a positive integer.']}, status=400)
-        item = CartItem.objects.filter(cart=cart, public_id=item_id).first()
+        item = CartItem.objects.filter(cart=cart, public_id=item_public_id).first()
         if not item:
             return Response({'detail': 'Not found.'}, status=404)
         item.quantity = quantity
@@ -84,9 +96,9 @@ class CartRemoveView(APIView):
     """Remove item from cart."""
     permission_classes = [AllowAny]
 
-    def post(self, request, item_id):
+    def post(self, request, item_public_id):
         cart = get_or_create_cart(request)
-        deleted, _ = CartItem.objects.filter(cart=cart, public_id=item_id).delete()
+        deleted, _ = CartItem.objects.filter(cart=cart, public_id=item_public_id).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 
 
@@ -95,10 +107,18 @@ class CartRemoveByProductView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, product_public_id):
+        ctx = get_active_store(request)
+        if not ctx.store:
+            raise NotFound()
         cart = get_or_create_cart(request)
-        product = Product.objects.filter(public_id=product_public_id).first()
+        product = Product.objects.filter(
+            public_id=product_public_id,
+            store=ctx.store,
+            is_active=True,
+            status=Product.Status.ACTIVE,
+        ).first()
         if not product:
-            return Response({'status': 'removed', 'deleted': False})
+            raise NotFound()
         deleted, _ = CartItem.objects.filter(cart=cart, product=product).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 

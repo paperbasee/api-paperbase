@@ -385,7 +385,10 @@ class OrderListView(ListAPIView):
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Order.objects.none()
-        return Order.objects.filter(user=self.request.user).prefetch_related(
+        ctx = get_active_store(self.request)
+        if not ctx.store:
+            return Order.objects.none()
+        return Order.objects.filter(user=self.request.user, store=ctx.store).prefetch_related(
             'items__product', 'items__product__images'
         )
 

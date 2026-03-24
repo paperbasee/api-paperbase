@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from engine.apps.products.models import Product
+from engine.core.tenancy import get_active_store
 
 from .models import Review
 
@@ -18,8 +19,21 @@ class ReviewSerializer(serializers.ModelSerializer):
 class ReviewCreateSerializer(serializers.ModelSerializer):
     product = serializers.SlugRelatedField(
         slug_field='public_id',
-        queryset=Product.objects.filter(is_active=True),
+        queryset=Product.objects.none(),
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        request = self.context.get("request")
+        ctx = get_active_store(request) if request else None
+        if ctx and ctx.store:
+            self.fields["product"].queryset = Product.objects.filter(
+                is_active=True,
+                status=Product.Status.ACTIVE,
+                store=ctx.store,
+            )
+        else:
+            self.fields["product"].queryset = Product.objects.none()
 
     class Meta:
         model = Review

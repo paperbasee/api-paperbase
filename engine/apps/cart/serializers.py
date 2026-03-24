@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from engine.apps.products.serializers import ProductListSerializer
+from engine.core.tenancy import get_active_store
 
 from .models import Cart, CartItem
 
@@ -28,7 +29,9 @@ class CartAddSerializer(serializers.Serializer):
     size = serializers.CharField(max_length=20, allow_blank=True, default='')
 
     def validate_product_public_id(self, value):
-        from engine.apps.products.models import Product
-        if not Product.objects.filter(public_id=value, is_active=True).exists():
-            raise serializers.ValidationError('Product not found.')
+        # Existence and tenant scoping are enforced in the view and return 404.
+        request = self.context.get("request")
+        ctx = get_active_store(request) if request else None
+        if not ctx or not ctx.store:
+            raise serializers.ValidationError("Product not found.")
         return value

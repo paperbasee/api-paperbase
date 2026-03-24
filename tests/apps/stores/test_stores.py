@@ -196,9 +196,9 @@ class DeleteStoreEndpointTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data["redirect_route"], "/")
 
-        # Response tokens should include active_store_id for the next store.
+        # Response tokens should include active_store_public_id for the next store.
         payload = AccessToken(resp.data["access"]).payload
-        self.assertEqual(payload.get("active_store_id"), store_b.public_id)
+        self.assertEqual(payload.get("active_store_public_id"), store_b.public_id)
 
     def test_delete_status_is_user_scoped(self):
         _set_default_plan(max_stores=1)

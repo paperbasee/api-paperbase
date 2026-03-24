@@ -106,6 +106,19 @@ def resolve_store_from_host_cached(normalized_host: str) -> Optional[Store]:
     payload = get_domain_resolution_payload(normalized_host)
     if not payload:
         return None
+    store = Store.objects.filter(
+        public_id=payload["store_public_id"],
+        is_active=True,
+    ).first()
+    if store is not None:
+        return store
+    # Cached payload can become stale between test DB resets or store rotations.
+    invalidate_domain_host(normalized_host)
+    payload = _load_from_db(normalized_host)
+    if payload is None:
+        return None
+    ttl = int(getattr(settings, "DOMAIN_RESOLUTION_CACHE_TTL", 420))
+    _tenant_resolution_cache().set(_cache_key(normalized_host), json.dumps(payload), ttl)
     return Store.objects.filter(
         public_id=payload["store_public_id"],
         is_active=True,
@@ -114,4 +127,14 @@ def resolve_store_from_host_cached(normalized_host: str) -> Optional[Store]:
 
 def resolve_store_public_id_from_host_cached(normalized_host: str) -> Optional[str]:
     payload = get_domain_resolution_payload(normalized_host)
-    return payload["store_public_id"] if payload else None
+    if not payload:
+        return None
+    if Store.objects.filter(public_id=payload["store_public_id"], is_active=True).exists():
+        return payload["store_public_id"]
+    invalidate_domain_host(normalized_host)
+    payload = _load_from_db(normalized_host)
+    if payload is None:
+        return None
+    ttl = int(getattr(settings, "DOMAIN_RESOLUTION_CACHE_TTL", 420))
+    _tenant_resolution_cache().set(_cache_key(normalized_host), json.dumps(payload), ttl)
+    return payload["store_public_id"]

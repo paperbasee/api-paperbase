@@ -17,7 +17,7 @@ def _user_by_public_id(User, uid: str):
 
 class JWTStoreWebSocketMiddleware:
     """
-    Parse `?token=<access_jwt>` and populate scope[\"user\"] and scope[\"ws_active_store_id\"].
+    Parse `?token=<access_jwt>` and populate scope[\"user\"] and scope[\"ws_active_store_public_id\"].
     """
 
     def __init__(self, inner):
@@ -26,7 +26,7 @@ class JWTStoreWebSocketMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "websocket":
             return await self.inner(scope, receive, send)
-        scope["ws_active_store_id"] = None
+        scope["ws_active_store_public_id"] = None
         scope["user"] = AnonymousUser()
         qs = parse_qs(scope.get("query_string", b"").decode("utf-8"))
         token = (qs.get("token") or [None])[0]
@@ -36,8 +36,8 @@ class JWTStoreWebSocketMiddleware:
             access = AccessToken(token)
             claim = settings.SIMPLE_JWT["USER_ID_CLAIM"]
             uid = access.get(claim)
-            aid = access.get("active_store_id")
-            scope["ws_active_store_id"] = str(aid) if aid is not None else None
+            active_store_public_id = access.get("active_store_public_id")
+            scope["ws_active_store_public_id"] = str(active_store_public_id) if active_store_public_id is not None else None
             if uid:
                 from django.contrib.auth import get_user_model
 

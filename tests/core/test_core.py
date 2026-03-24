@@ -20,6 +20,8 @@ from engine.apps.orders.services import resolve_and_attach_customer
 from engine.apps.customers.models import Customer, CustomerAddress
 from engine.apps.coupons.models import Coupon
 from engine.apps.cart.models import Cart, CartItem
+from engine.apps.wishlist.models import WishlistItem
+from engine.apps.reviews.models import Review
 from engine.apps.notifications.models import StorefrontCTA
 
 User = get_user_model()
@@ -165,20 +167,12 @@ class TenancyTests(TestCase):
         self.assertIsNone(store)
 
     def test_get_active_store_from_header_with_public_id(self):
-        request = self.factory.get("/", HTTP_X_STORE_ID=self.store.public_id)
+        request = self.factory.get("/", HTTP_X_STORE_PUBLIC_ID=self.store.public_id)
         request.user = self.user
         ctx = get_active_store(request)
         self.assertIsNotNone(ctx.store)
         self.assertEqual(ctx.store.id, self.store.id)
         self.assertIsNotNone(ctx.membership)
-
-    def test_get_active_store_from_header_backward_compat_int(self):
-        """Backward compat: integer store ID in header still resolves during migration window."""
-        request = self.factory.get("/", HTTP_X_STORE_ID=str(self.store.id))
-        request.user = self.user
-        ctx = get_active_store(request)
-        self.assertIsNotNone(ctx.store)
-        self.assertEqual(ctx.store.id, self.store.id)
 
     def test_tenant_api_guard_unknown_host_returns_403(self):
         resp = self.client.get(
@@ -242,7 +236,7 @@ class AuthStoreEndpointsTests(TestCase):
         self.authenticate()
         response = self.client.post(
             "/api/v1/auth/switch-store/",
-            {"store_id": self.store.public_id},
+            {"store_public_id": self.store.public_id},
             format="json",
         )
         self.assertEqual(response.status_code, 200)
@@ -410,13 +404,13 @@ class PublicIdApiTests(TestCase):
 
     def test_login_returns_public_id_not_integer(self):
         resp_data = self._authenticate()
-        active_store_id = resp_data.get("active_store_id")
-        self.assertIsNotNone(active_store_id)
+        active_store_public_id = resp_data.get("active_store_public_id")
+        self.assertIsNotNone(active_store_public_id)
         self.assertFalse(
-            str(active_store_id).isdigit(),
-            f"active_store_id must be a public_id string, not integer: {active_store_id}",
+            str(active_store_public_id).isdigit(),
+            f"active_store_public_id must be a public_id string, not integer: {active_store_public_id}",
         )
-        self.assertTrue(str(active_store_id).startswith("str_"))
+        self.assertTrue(str(active_store_public_id).startswith("str_"))
 
     def test_me_endpoint_exposes_user_public_id(self):
         self._authenticate()
@@ -445,7 +439,7 @@ class PublicIdApiTests(TestCase):
         self._authenticate()
         resp = self.client.get(
             "/api/v1/admin/branding/",
-            HTTP_X_STORE_ID=self.store.public_id,
+            HTTP_X_STORE_PUBLIC_ID=self.store.public_id,
         )
         self.assertEqual(resp.status_code, 200)
 
@@ -477,12 +471,12 @@ class PublicIdApiTests(TestCase):
         self._authenticate()
         resp = self.client.post(
             "/api/v1/auth/switch-store/",
-            {"store_id": self.store.public_id},
+            {"store_public_id": self.store.public_id},
             format="json",
         )
         self.assertEqual(resp.status_code, 200)
         self.assertIn("access", resp.data)
-        self.assertTrue(str(resp.data.get("active_store_id", "")).startswith("str_"))
+        self.assertTrue(str(resp.data.get("active_store_public_id", "")).startswith("str_"))
 
 
 # ---------------------------------------------------------------------------
@@ -793,9 +787,12 @@ class CrossTenantAdminIsolationTests(TestCase):
 
         self.admin_a = make_user("admin-a@example.com")
         self.admin_b = make_user("admin-b@example.com")
+        self.shared_user = make_user("shared-user@example.com")
 
         _make_membership(self.admin_a, self.store_a, StoreMembership.Role.OWNER)
         _make_membership(self.admin_b, self.store_b, StoreMembership.Role.OWNER)
+        _make_membership(self.shared_user, self.store_a, StoreMembership.Role.OWNER)
+        _make_membership(self.shared_user, self.store_b, StoreMembership.Role.OWNER)
 
         self.cat_a = _make_category(self.store_a, "CatA", "cat-a")
         self.cat_b = _make_category(self.store_b, "CatB", "cat-b")
@@ -806,6 +803,8 @@ class CrossTenantAdminIsolationTests(TestCase):
 
         self.order_a = _make_order(self.store_a, "cust-a@example.com")
         self.order_b = _make_order(self.store_b, "cust-b@example.com")
+        self.shared_order_a = _make_order(self.store_a, "shared@example.com", user=self.shared_user)
+        self.shared_order_b = _make_order(self.store_b, "shared@example.com", user=self.shared_user)
 
         self.customer_a = _make_customer(self.store_a, self.admin_a)
         self.customer_b = _make_customer(self.store_b, self.admin_b)
@@ -827,9 +826,27 @@ class CrossTenantAdminIsolationTests(TestCase):
             store=self.store_b, cta_text="CTA Store B", is_active=True
         )
 
+        self.cart_item_b = CartItem.objects.create(
+            cart=Cart.objects.create(user=self.shared_user),
+            product=self.product_b,
+            quantity=1,
+        )
+        self.wishlist_item_b = WishlistItem.objects.create(
+            user=self.shared_user,
+            product=self.product_b,
+        )
+        self.review_b = Review.objects.create(
+            product=self.product_b,
+            user=self.shared_user,
+            rating=5,
+            title="Great",
+            body="Great product",
+            status=Review.Status.APPROVED,
+        )
+
     def _auth_as(self, user, store):
         self.client.force_authenticate(user=user)
-        self.client.credentials(HTTP_X_STORE_ID=store.public_id)
+        self.client.credentials(HTTP_X_STORE_PUBLIC_ID=store.public_id)
 
     def _list_ids(self, resp):
         """Extract identifiers from a list response, preferring 'id' then 'public_id'."""
@@ -885,6 +902,199 @@ class CrossTenantAdminIsolationTests(TestCase):
             HTTP_HOST="admin-a.local",
         )
         self.assertEqual(resp.status_code, 404)
+
+    def test_storefront_order_list_isolated_by_active_store(self):
+        """Shared user with memberships in both stores must only see active-store orders."""
+        self.client.force_authenticate(user=self.shared_user)
+        resp = self.client.get("/api/v1/orders/my/", HTTP_X_STORE_PUBLIC_ID=self.store_a.public_id)
+        self.assertEqual(resp.status_code, 200)
+        public_ids = [item.get("public_id") for item in resp.data.get("results", resp.data)]
+        self.assertIn(self.shared_order_a.public_id, public_ids)
+        self.assertNotIn(self.shared_order_b.public_id, public_ids)
+
+    def test_cart_add_cross_store_product_is_blocked(self):
+        resp = self.client.post(
+            "/api/v1/cart/add/",
+            {"product_public_id": self.product_b.public_id, "quantity": 1},
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_wishlist_add_cross_store_product_is_blocked(self):
+        resp = self.client.post(
+            "/api/v1/wishlist/add/",
+            {"product_public_id": self.product_b.public_id},
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_review_summary_cross_store_product_is_blocked(self):
+        resp = self.client.get(
+            "/api/v1/reviews/summary/",
+            {"product_public_id": self.product_b.public_id},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_review_create_cross_store_product_is_blocked(self):
+        self.client.force_authenticate(user=self.shared_user)
+        resp = self.client.post(
+            "/api/v1/reviews/create/",
+            {
+                "product": self.product_b.public_id,
+                "rating": 5,
+                "title": "Blocked",
+                "body": "Should fail",
+            },
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cross_store_order_access(self):
+        """Store A context must not access Store B order detail by public_id."""
+        resp = self.client.get(
+            f"/api/v1/orders/{self.order_b.public_id}/",
+            {"email": "cust-b@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_cross_store_product_access(self):
+        """Store A context must not access Store B product by public_id or slug."""
+        by_public_id = self.client.get(
+            f"/api/v1/products/{self.product_b.public_id}/",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(by_public_id.status_code, 404)
+
+        by_slug = self.client.get(
+            f"/api/v1/products/{self.product_b.slug}/",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(by_slug.status_code, 404)
+
+    def test_cross_store_cart_access(self):
+        """Cart add/remove with Store B product from Store A context must fail."""
+        add_resp = self.client.post(
+            "/api/v1/cart/add/",
+            {"product_public_id": self.product_b.public_id, "quantity": 1},
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(add_resp.status_code, 404)
+
+        remove_resp = self.client.post(
+            f"/api/v1/cart/remove-by-product/{self.product_b.public_id}/",
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(remove_resp.status_code, 404)
+
+    def test_cross_store_wishlist_access(self):
+        """Wishlist add/remove with Store B product from Store A context must fail."""
+        add_resp = self.client.post(
+            "/api/v1/wishlist/add/",
+            {"product_public_id": self.product_b.public_id},
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(add_resp.status_code, 404)
+
+        remove_resp = self.client.post(
+            f"/api/v1/wishlist/remove/{self.product_b.public_id}/",
+            format="json",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(remove_resp.status_code, 404)
+
+    def test_public_id_only_access(self):
+        """
+        Public order detail endpoint must not accept internal numeric ID and
+        payloads must not expose internal `id`.
+        """
+        # Route shape accepts string, but integer-like IDs must never resolve.
+        by_internal_id = self.client.get(
+            f"/api/v1/orders/{self.order_a.id}/",
+            {"email": "cust-a@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(by_internal_id.status_code, 404)
+
+        # A valid response must still expose only public identifiers.
+        valid = self.client.get(
+            f"/api/v1/orders/{self.order_a.public_id}/",
+            {"email": "cust-a@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(valid.status_code, 200, valid.data)
+        self.assertIn("public_id", valid.data)
+        self.assertNotIn("id", valid.data)
+        for item in valid.data.get("items", []):
+            self.assertIn("public_id", item)
+            self.assertNotIn("id", item)
+
+    def test_order_list_store_isolation(self):
+        """
+        `/orders/my/` must return only active-store orders and no internal ids.
+        """
+        self.client.force_authenticate(user=self.shared_user)
+        resp = self.client.get(
+            "/api/v1/orders/my/",
+            HTTP_X_STORE_PUBLIC_ID=self.store_a.public_id,
+        )
+        self.assertEqual(resp.status_code, 200)
+        rows = resp.data.get("results", resp.data)
+        ids = [row.get("public_id") for row in rows]
+        self.assertIn(self.shared_order_a.public_id, ids)
+        self.assertNotIn(self.shared_order_b.public_id, ids)
+        for row in rows:
+            self.assertIn("public_id", row)
+            self.assertNotIn("id", row)
+
+    def test_invalid_public_id_returns_404(self):
+        """
+        Order detail must return 404 for invalid ID, wrong store, and wrong identity.
+        """
+        invalid_resp = self.client.get(
+            "/api/v1/orders/ord_not_real_123/",
+            {"email": "cust-a@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(invalid_resp.status_code, 404)
+
+        wrong_store_resp = self.client.get(
+            f"/api/v1/orders/{self.order_b.public_id}/",
+            {"email": "cust-b@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(wrong_store_resp.status_code, 404)
+
+        # Guest lookup with wrong email must fail.
+        wrong_email_resp = self.client.get(
+            f"/api/v1/orders/{self.order_a.public_id}/",
+            {"email": "wrong@example.com"},
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(wrong_email_resp.status_code, 404)
+
+        # Authenticated user mismatch must fail.
+        self.client.force_authenticate(user=self.admin_b)
+        wrong_user_resp = self.client.get(
+            f"/api/v1/orders/{self.shared_order_a.public_id}/",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(wrong_user_resp.status_code, 404)
+
+        # Authenticated owner succeeds in correct store.
+        self.client.force_authenticate(user=self.shared_user)
+        ok_resp = self.client.get(
+            f"/api/v1/orders/{self.shared_order_a.public_id}/",
+            HTTP_HOST="admin-a.local",
+        )
+        self.assertEqual(ok_resp.status_code, 200, ok_resp.data)
 
     def test_admin_order_create_rejects_cross_store_product(self):
         """Store A admin must not create order using Store B product public_id."""
@@ -1116,13 +1326,13 @@ class CrossTenantAdminIsolationTests(TestCase):
 
     def test_admin_null_store_context_returns_empty_not_all(self):
         """
-        When no store is resolved (no X-Store-ID, no JWT claim), admin list endpoints
+        When no store is resolved (no X-Store-Public-ID, no JWT claim), admin list endpoints
         must return empty results or deny access — never return all tenant records.
         Validates the Critical null store passthrough fix.
         Acceptable responses: 200 with empty list, or 403 (IsDashboardUser denies no-store context).
         """
         self.client.force_authenticate(user=self.admin_a)
-        # Deliberately send NO X-Store-ID header.
+        # Deliberately send NO X-Store-Public-ID header.
         resp = self.client.get("/api/v1/admin/products/")
         self.assertIn(
             resp.status_code,
@@ -1194,25 +1404,25 @@ class TokenTamperingTests(TestCase):
         # user_a has NO membership in store_b
         _make_membership(self.user_a, self.store_a)
 
-    def test_x_store_id_numeric_internal_pk_does_not_resolve_store(self):
-        """X-Store-ID must accept store public_id only, never internal integer pk."""
+    def test_x_store_public_id_numeric_internal_pk_does_not_resolve_store(self):
+        """X-Store-Public-ID must accept store public_id only, never internal integer pk."""
         factory = RequestFactory()
         req = factory.get(
             "/api/v1/admin/products/",
-            HTTP_X_STORE_ID=str(self.store_a.pk),
+            HTTP_X_STORE_PUBLIC_ID=str(self.store_a.pk),
         )
         req.user = self.user_a
         req.auth = None
         ctx = get_active_store(req)
         self.assertIsNone(
             ctx.store,
-            "Internal integer pk must not resolve a store via X-Store-ID",
+            "Internal integer pk must not resolve a store via X-Store-Public-ID",
         )
 
     def test_store_a_token_cannot_access_store_b_admin_resources(self):
         """
         Authenticated user with membership only in store A must be denied
-        when sending X-Store-ID for store B (no membership).
+        when sending X-Store-Public-ID for store B (no membership).
         """
         cat_b = _make_category(self.store_b, "Cat B", "cat-b")
         product_b = _make_product(self.store_b, cat_b, name="Product B")
@@ -1221,7 +1431,7 @@ class TokenTamperingTests(TestCase):
         # Force the store context to store_b via header — user has no membership there.
         resp = self.client.get(
             f"/api/v1/admin/products/{product_b.public_id}/",
-            HTTP_X_STORE_ID=self.store_b.public_id,
+            HTTP_X_STORE_PUBLIC_ID=self.store_b.public_id,
         )
         self.assertIn(
             resp.status_code,
@@ -1236,7 +1446,7 @@ class TokenTamperingTests(TestCase):
         self.client.force_authenticate(user=self.user_a)
         resp = self.client.post(
             "/api/v1/auth/switch-store/",
-            {"store_id": self.store_b.public_id},
+            {"store_public_id": self.store_b.public_id},
             format="json",
         )
         self.assertIn(
@@ -1245,9 +1455,9 @@ class TokenTamperingTests(TestCase):
             "switch-store must be denied when the user has no membership in the target store",
         )
 
-    def test_jwt_active_store_id_claim_is_verified_against_membership(self):
+    def test_jwt_active_store_public_id_claim_is_verified_against_membership(self):
         """
-        Even if the JWT carries an active_store_id claim for store_b,
+        Even if the JWT carries an active_store_public_id claim for store_b,
         the user must not be able to access store_b's resources without membership.
         """
         cat_b = _make_category(self.store_b, "Cat B2", "cat-b2")
@@ -1258,7 +1468,7 @@ class TokenTamperingTests(TestCase):
         # Override store context to store_b via header.
         resp = self.client.get(
             "/api/v1/admin/products/",
-            HTTP_X_STORE_ID=self.store_b.public_id,
+            HTTP_X_STORE_PUBLIC_ID=self.store_b.public_id,
         )
         # With no membership, IsDashboardUser must deny access.
         self.assertIn(resp.status_code, [200, 403])
@@ -1300,7 +1510,7 @@ class RolePermissionIsolationTests(TestCase):
 
     def _auth_as(self, user):
         self.client.force_authenticate(user=user)
-        self.client.credentials(HTTP_X_STORE_ID=self.store.public_id)
+        self.client.credentials(HTTP_X_STORE_PUBLIC_ID=self.store.public_id)
 
     def test_staff_cannot_delete_products(self):
         """STAFF role must receive 403 when attempting to delete a product."""
@@ -1398,7 +1608,7 @@ class IDEnumerationTests(TestCase):
 
     def _auth_as(self, user, store):
         self.client.force_authenticate(user=user)
-        self.client.credentials(HTTP_X_STORE_ID=store.public_id)
+        self.client.credentials(HTTP_X_STORE_PUBLIC_ID=store.public_id)
 
     def test_cannot_access_cross_store_product_by_uuid(self):
         """

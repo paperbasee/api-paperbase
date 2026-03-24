@@ -147,7 +147,7 @@ class StoreSummarySerializer(serializers.ModelSerializer):
 class MeSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(read_only=True)
     stores = serializers.SerializerMethodField()
-    active_store_id = serializers.SerializerMethodField()
+    active_store_public_id = serializers.SerializerMethodField()
     subscription = serializers.SerializerMethodField()
 
     class Meta:
@@ -164,7 +164,7 @@ class MeSerializer(serializers.ModelSerializer):
             "is_staff",
             "is_superuser",
             "date_joined",
-            "active_store_id",
+            "active_store_public_id",
             "subscription",
             "stores",
         ]
@@ -177,10 +177,10 @@ class MeSerializer(serializers.ModelSerializer):
             "date_joined",
         ]
 
-    def get_active_store_id(self, obj):
+    def get_active_store_public_id(self, obj):
         request = self.context.get("request")
         if request and getattr(request, "auth", None):
-            return request.auth.get("active_store_id")
+            return request.auth.get("active_store_public_id")
         return None
 
     def get_subscription(self, obj):

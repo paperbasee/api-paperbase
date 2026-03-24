@@ -95,7 +95,7 @@ TENANT_API_EXEMPT_PREFIXES = (
 
 # CORS shared pieces
 CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults").defaults.default_headers) + [
-    "x-store-id",
+    "x-store-public-id",
 ]
 
 # Middleware

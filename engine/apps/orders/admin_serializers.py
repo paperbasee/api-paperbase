@@ -8,6 +8,7 @@ from django.db import transaction
 from engine.apps.products.models import Product, ProductVariant
 from engine.apps.orders.stock import adjust_stock
 from engine.apps.shipping.models import ShippingMethod, ShippingZone
+from engine.apps.shipping.service import quote_shipping
 from engine.apps.orders.services import (
     recalculate_order_totals,
     resolve_active_store_product,

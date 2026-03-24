@@ -17,6 +17,7 @@ class PublicBannerListView(StorefrontTenantMixin, ListAPIView):
 
     permission_classes = [AllowAny]
     serializer_class = PublicBannerSerializer
+    pagination_class = None
 
     def get_queryset(self):
         ctx = get_active_store(self.request)
