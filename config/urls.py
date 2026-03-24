@@ -4,6 +4,7 @@ from django.contrib import admin
 from django.http import JsonResponse
 from django.urls import include, path
 
+from engine.core.search_views import UnifiedSearchView
 
 def health(_request):
     return JsonResponse({"status": "ok"})
@@ -27,6 +28,7 @@ api_v1_patterns = [
     path('notifications/', include('engine.apps.notifications.urls')),
     path('system-notifications/', include('engine.apps.notifications.system_urls')),
     path('support/', include('engine.apps.support.urls')),
+    path('search/', UnifiedSearchView.as_view(), name='global-search'),
 ]
 
 urlpatterns = [
