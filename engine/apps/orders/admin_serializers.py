@@ -14,6 +14,21 @@ from engine.apps.orders.services import resolve_and_attach_customer
 from .models import Order, OrderItem
 
 
+class StoreScopedProductSlugRelatedField(serializers.SlugRelatedField):
+    """
+    Resolve product by public_id scoped to context['active_store'].
+    Nested list item serializers may run before a static queryset is valid; using
+    get_queryset() defers filtering until validation when root context is available.
+    """
+
+    def get_queryset(self):
+        ctx = self.context
+        active_store = ctx.get("active_store") if isinstance(ctx, dict) else None
+        if not active_store:
+            return Product.objects.none()
+        return Product.objects.filter(store=active_store)
+
+
 def _shipping_cost_for_order(order: Order, *, order_subtotal: Decimal) -> Decimal:
     quote = quote_shipping(
         store=order.store,
@@ -302,18 +317,15 @@ class AdminOrderUpdateSerializer(serializers.ModelSerializer):
 
 class AdminOrderItemWriteSerializer(serializers.Serializer):
     # Accept product_public_id (e.g. prd_xxx) — do NOT accept internal UUID/integer PKs
-    product = serializers.SlugRelatedField(slug_field='public_id', queryset=Product.objects.all())
-    variant_public_id = serializers.CharField(required=False, allow_null=True)
+    product = StoreScopedProductSlugRelatedField(slug_field="public_id", queryset=Product.objects.all())
+    variant_public_id = serializers.CharField(required=False, allow_null=True, allow_blank=True)
     quantity = serializers.IntegerField(min_value=1)
     price = serializers.DecimalField(max_digits=10, decimal_places=2)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        active_store = self.context.get("active_store")
-        if not active_store:
-            self.fields["product"].queryset = Product.objects.none()
-            return
-        self.fields["product"].queryset = Product.objects.filter(store=active_store)
+    def validate(self, attrs):
+        if attrs.get("variant_public_id") == "":
+            attrs["variant_public_id"] = None
+        return attrs
 
 
 class AdminOrderCreateSerializer(serializers.ModelSerializer):
