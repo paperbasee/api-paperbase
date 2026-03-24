@@ -9,7 +9,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.response import Response
 
-from config.permissions import IsDashboardUser
+from config.permissions import IsPlatformSuperuser
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
@@ -110,6 +110,11 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         if self.action == 'list':
             return AdminProductListSerializer
         return AdminProductSerializer
+
+    def get_permissions(self):
+        if self.action == "destroy":
+            return [IsPlatformSuperuser()]
+        return super().get_permissions()
 
     def get_serializer_context(self):
         ctx = get_active_store(self.request)

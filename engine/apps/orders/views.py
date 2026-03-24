@@ -36,8 +36,6 @@ class OrderCreateView(CreateAPIView):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        ser = self.get_serializer(data=request.data)
-        ser.is_valid(raise_exception=True)
         cart = get_or_create_cart(request)
         items = list(cart.items.select_related('product', 'variant'))
         if not items:
@@ -50,12 +48,30 @@ class OrderCreateView(CreateAPIView):
         from engine.apps.products.models import Product, ProductVariant
         product_ids = [ci.product_id for ci in items]
         variant_ids = [ci.variant_id for ci in items if getattr(ci, "variant_id", None)]
+        store = items[0].product.store if items else None
+        if not store:
+            return Response(
+                {"detail": "No store found for this cart."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         locked_products = {
-            p.id: p for p in Product.objects.filter(id__in=product_ids).select_for_update()
+            p.id: p
+            for p in Product.objects.filter(
+                id__in=product_ids,
+                store=store,
+                is_active=True,
+                status=Product.Status.ACTIVE,
+            ).select_for_update()
         }
         locked_variants = {
             v.id: v
-            for v in ProductVariant.objects.filter(id__in=variant_ids)
+            for v in ProductVariant.objects.filter(
+                id__in=variant_ids,
+                product__store=store,
+                product__is_active=True,
+                product__status=Product.Status.ACTIVE,
+                is_active=True,
+            )
             .select_for_update()
             .select_related("product")
         }
@@ -66,7 +82,7 @@ class OrderCreateView(CreateAPIView):
             if getattr(ci, "variant_id", None):
                 variant = locked_variants.get(ci.variant_id)
                 if not variant:
-                    stock_errors.append(f"Variant {ci.variant_id} not found.")
+                    stock_errors.append(f"Variant {ci.variant_id} is unavailable.")
                     continue
                 if variant.stock_quantity < ci.quantity:
                     stock_errors.append(
@@ -76,7 +92,7 @@ class OrderCreateView(CreateAPIView):
             else:
                 product = locked_products.get(ci.product_id)
                 if not product:
-                    stock_errors.append(f"Product {ci.product.name} not found.")
+                    stock_errors.append(f"Product {ci.product.name} is unavailable.")
                     continue
                 if product.stock < ci.quantity:
                     stock_errors.append(
@@ -98,19 +114,17 @@ class OrderCreateView(CreateAPIView):
 
         # Create order and reduce stock
         subtotal = Decimal('0.00')
-        # Cart has no direct store FK; derive store from the first cart item's product.
-        store = items[0].product.store if items else None
-        if not store:
-            return Response(
-                {"detail": "No store found for this cart."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         ctx = get_active_store(request)
         if ctx.store and ctx.store.id != store.id:
             return Response(
                 {"detail": "Store mismatch for this checkout request."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        ser = self.get_serializer(
+            data=request.data,
+            context={**self.get_serializer_context(), "store": store},
+        )
+        ser.is_valid(raise_exception=True)
         order = Order.objects.create(
             store=store,
             order_number=get_next_order_number(store),
@@ -119,6 +133,8 @@ class OrderCreateView(CreateAPIView):
             shipping_name=ser.validated_data['shipping_name'],
             shipping_address=ser.validated_data['shipping_address'],
             phone=ser.validated_data['phone'],
+            shipping_zone=ser.validated_data["shipping_zone"],
+            shipping_method=ser.validated_data.get("shipping_method"),
         )
         for ci in items:
             product = locked_products[ci.product_id]
@@ -147,8 +163,8 @@ class OrderCreateView(CreateAPIView):
         quote = quote_shipping(
             store=order.store,
             order_subtotal=subtotal,
-            delivery_area=(order.delivery_area or "").strip().lower() or None,
-            district=(order.district or "").strip() or None,
+            shipping_zone_id=order.shipping_zone_id,
+            shipping_method_id=order.shipping_method_id,
         )
         order.subtotal = subtotal
         order.shipping_cost = quote.shipping_cost
@@ -195,23 +211,32 @@ class DirectOrderCreateView(CreateAPIView):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        ser = self.get_serializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        
-        products_data = ser.validated_data['products']
-        if not products_data:
+        products_data = request.data.get("products") or []
+        if not isinstance(products_data, list) or not products_data:
             return Response(
                 {'detail': 'No products provided.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        ctx = get_active_store(request)
+        if not ctx.store:
+            return Response(
+                {"detail": "No active store resolved for this order request."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         # Get products with locked rows for atomic stock updates
         from engine.apps.products.models import Product
         product_public_ids = [p['public_id'] for p in products_data]
 
         locked_products = {
             p.public_id: p
-            for p in Product.objects.filter(public_id__in=product_public_ids).select_for_update()
+            for p in Product.objects.filter(
+                public_id__in=product_public_ids,
+                store=ctx.store,
+                is_active=True,
+                status=Product.Status.ACTIVE,
+            ).select_for_update()
         }
 
         # Validate all products belong to the same store.
@@ -221,6 +246,28 @@ class DirectOrderCreateView(CreateAPIView):
                 {'detail': 'All products in a single order must belong to the same store.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if not locked_products:
+            return Response(
+                {'detail': 'No valid products provided.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Resolve store from the (now validated) locked products set.
+        first_product = next(iter(locked_products.values()))
+        order_store = first_product.store
+        if order_store.id != ctx.store.id:
+            return Response(
+                {"detail": "Store mismatch for this order request."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        ser = self.get_serializer(
+            data=request.data,
+            context={**self.get_serializer_context(), "store": order_store},
+        )
+        ser.is_valid(raise_exception=True)
+        products_data = ser.validated_data['products']
 
         # Check stock availability
         stock_errors = []
@@ -248,22 +295,7 @@ class DirectOrderCreateView(CreateAPIView):
         if not email and request.user.is_authenticated:
             email = (getattr(request.user, 'email', '') or '').strip()
 
-        # Derive delivery_area server-side from district for consistency.
         district = (ser.validated_data.get('district') or '').strip()
-        if district:
-            delivery_area = 'inside' if district == 'Dhaka' else 'outside'
-        else:
-            delivery_area = ser.validated_data['delivery_area']
-
-        # Resolve store from the (now validated) locked products set.
-        first_product = next(iter(locked_products.values()))
-        order_store = first_product.store
-        ctx = get_active_store(request)
-        if ctx.store and ctx.store.id != order_store.id:
-            return Response(
-                {"detail": "Store mismatch for this order request."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
         # Create order and reduce stock
         subtotal = Decimal('0.00')
@@ -276,7 +308,8 @@ class DirectOrderCreateView(CreateAPIView):
             shipping_address=ser.validated_data['shipping_address'],
             phone=ser.validated_data['phone'],
             district=district,
-            delivery_area=delivery_area,
+            shipping_zone=ser.validated_data["shipping_zone"],
+            shipping_method=ser.validated_data.get("shipping_method"),
         )
         
         for product_data in products_data:
@@ -301,8 +334,8 @@ class DirectOrderCreateView(CreateAPIView):
         quote = quote_shipping(
             store=order.store,
             order_subtotal=subtotal,
-            delivery_area=delivery_area,
-            district=district or None,
+            shipping_zone_id=order.shipping_zone_id,
+            shipping_method_id=order.shipping_method_id,
         )
         order.subtotal = subtotal
         order.shipping_cost = quote.shipping_cost

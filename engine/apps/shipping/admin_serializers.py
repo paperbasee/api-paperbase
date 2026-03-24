@@ -9,8 +9,6 @@ class AdminShippingZoneSerializer(serializers.ModelSerializer):
         fields = [
             "public_id",
             "name",
-            "delivery_areas",
-            "districts",
             "is_active",
             "created_at",
             "updated_at",

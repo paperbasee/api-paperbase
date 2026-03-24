@@ -18,6 +18,7 @@ from rest_framework.test import APIClient
 
 from config.asgi import application
 from engine.apps.orders.models import Order
+from engine.apps.shipping.models import ShippingZone
 from engine.apps.products.models import Category, Product
 from engine.apps.stores.domain_serializers import CustomDomainCreateSerializer
 from engine.apps.stores.models import Domain, Store, StoreMembership
@@ -850,8 +851,13 @@ class DomainWebSocketIsolationTests(TransactionTestCase):
             headers=self._ws_headers(HOST_STORE_A),
         )
         self.assertTrue((await communicator.connect())[0])
+        zone = await sync_to_async(ShippingZone.objects.create)(
+            store=self.store_a,
+            name="Signal Zone",
+            is_active=True,
+        )
         await sync_to_async(
-            lambda: Order.objects.create(store=self.store_a)
+            lambda: Order.objects.create(store=self.store_a, shipping_zone=zone)
         )()
         raw = await communicator.receive_from()
         data = json.loads(raw)

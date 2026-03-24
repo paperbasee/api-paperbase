@@ -18,16 +18,6 @@ class ShippingZone(models.Model):
         related_name="shipping_zones",
     )
     name = models.CharField(max_length=100)
-    delivery_areas = models.CharField(
-        max_length=100,
-        blank=True,
-        help_text="Comma-separated delivery areas (e.g. inside,outside). Blank = any.",
-    )
-    districts = models.CharField(
-        max_length=500,
-        blank=True,
-        help_text="Comma-separated districts/cities this zone applies to (e.g. Dhaka,Chittagong). Blank = any.",
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

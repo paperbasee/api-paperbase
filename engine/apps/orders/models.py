@@ -70,9 +70,7 @@ class Order(models.Model):
     shipping_cost = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
     shipping_zone = models.ForeignKey(
         ShippingZone,
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
+        on_delete=models.PROTECT,
         related_name="orders",
     )
     shipping_method = models.ForeignKey(
@@ -92,7 +90,6 @@ class Order(models.Model):
     shipping_name = models.CharField(max_length=255, blank=True)
     shipping_address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
-    delivery_area = models.CharField(max_length=50, blank=True, default='')
     district = models.CharField(max_length=100, blank=True, default='')
     tracking_number = models.CharField(max_length=100, blank=True)
     courier_provider = models.CharField(max_length=20, blank=True, default="")
@@ -182,10 +179,15 @@ class OrderItem(models.Model):
         help_text="Non-sequential public identifier (e.g. oit_xxx).",
     )
     order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    product = models.ForeignKey(Product, on_delete=models.PROTECT)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
     variant = models.ForeignKey(
         'products.ProductVariant',
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name='order_items',
@@ -199,4 +201,5 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.order} - {self.product.name} x{self.quantity}"
+        product_name = self.product.name if self.product else "Unavailable"
+        return f"{self.order} - {product_name} x{self.quantity}"

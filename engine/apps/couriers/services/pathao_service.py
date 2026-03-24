@@ -43,7 +43,7 @@ def _build_payload(order) -> dict[str, Any]:
     """
     items = list(order.items.select_related("product").all())
     item_description = ", ".join(
-        f"{item.product.name} x{item.quantity}" for item in items
+        f"{(item.product.name if item.product else 'Unavailable')} x{item.quantity}" for item in items
     )
 
     return {

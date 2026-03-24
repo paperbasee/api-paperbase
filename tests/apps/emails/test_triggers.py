@@ -26,6 +26,7 @@ from engine.apps.emails.triggers import (
     queue_two_fa_disabled_email,
 )
 from engine.apps.orders.models import Order
+from engine.apps.shipping.models import ShippingZone
 
 from tests.core.test_core import _ensure_default_plan
 
@@ -46,11 +47,17 @@ def _store():
 
 def _order(store, **kwargs):
     order_number = f"T{_uuid.uuid4().hex[:12].upper()}"
+    zone = ShippingZone.objects.create(
+        store=store,
+        name=f"Zone {_uuid.uuid4().hex[:6]}",
+        is_active=True,
+    )
     defaults = dict(
         store=store,
         order_number=order_number,
         email="cust@example.com",
         shipping_name="Jane",
+        shipping_zone=zone,
         total=Decimal("100.00"),
     )
     defaults.update(kwargs)

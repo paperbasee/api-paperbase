@@ -13,6 +13,7 @@ from engine.apps.billing.models import Plan
 from engine.apps.billing.services import activate_subscription
 from engine.apps.customers.models import Customer
 from engine.apps.orders.models import Order
+from engine.apps.shipping.models import ShippingZone
 from engine.apps.products.models import Category, Product
 from engine.apps.stores.models import Domain, Store, StoreDeletionJob, StoreMembership, StoreSettings
 
@@ -103,7 +104,8 @@ def _make_catalog_data(store: Store, user: User):
         status=Product.Status.ACTIVE,
         is_active=True,
     )
-    order = Order.objects.create(store=store, email="cust@example.com")
+    zone = ShippingZone.objects.create(store=store, name="Store Zone", is_active=True)
+    order = Order.objects.create(store=store, email="cust@example.com", shipping_zone=zone)
     customer = Customer.objects.create(store=store, user=user)
 
     today = datetime.date.today()

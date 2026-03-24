@@ -14,7 +14,8 @@ from engine.core.ids import generate_public_id
 from engine.core.models import ActivityLog
 from engine.apps.support.models import SupportTicket
 from engine.apps.products.models import Product, Category
-from engine.apps.orders.models import Order
+from engine.apps.orders.models import Order, OrderItem
+from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
 from engine.apps.customers.models import Customer, CustomerAddress
 from engine.apps.coupons.models import Coupon
@@ -64,10 +65,29 @@ def _make_product(store, category, name="Product", price=10, stock=5):
     )
 
 
-def _make_order(store, email="cust@example.com"):
+def _default_shipping_zone(store):
+    zone, _ = ShippingZone.objects.get_or_create(
+        store=store,
+        name="Default Zone",
+        defaults={"is_active": True},
+    )
+    return zone
+
+
+def _make_order(store, email="cust@example.com", **kwargs):
     """Create an order with a globally unique order number to avoid UNIQUE constraint errors."""
     order_number = f"T{_uuid.uuid4().hex[:12].upper()}"
-    return Order.objects.create(store=store, order_number=order_number, email=email)
+    defaults = {
+        "store": store,
+        "order_number": order_number,
+        "email": email,
+        "shipping_name": "Test Customer",
+        "shipping_address": "Test Address",
+        "phone": "01700000000",
+        "shipping_zone": _default_shipping_zone(store),
+    }
+    defaults.update(kwargs)
+    return Order.objects.create(**defaults)
 
 
 def _make_customer(store, user):
@@ -782,6 +802,7 @@ class CrossTenantAdminIsolationTests(TestCase):
 
         self.product_a = _make_product(self.store_a, self.cat_a, name="Product A")
         self.product_b = _make_product(self.store_b, self.cat_b, name="Product B")
+        self.zone_a = _default_shipping_zone(self.store_a)
 
         self.order_a = _make_order(self.store_a, "cust-a@example.com")
         self.order_b = _make_order(self.store_b, "cust-b@example.com")
@@ -874,7 +895,7 @@ class CrossTenantAdminIsolationTests(TestCase):
             "email": "cross@example.com",
             "shipping_address": "Address",
             "district": "Dhaka",
-            "delivery_area": "inside",
+            "shipping_zone": self.zone_a.public_id,
             "items": [
                 {
                     "product": self.product_b.public_id,
@@ -885,6 +906,68 @@ class CrossTenantAdminIsolationTests(TestCase):
         }
         resp = self.client.post("/api/v1/admin/orders/", payload, format="json")
         self.assertEqual(resp.status_code, 400)
+
+    def test_admin_order_create_requires_shipping_zone(self):
+        """Admin order create must fail when shipping_zone is missing."""
+        self._auth_as(self.admin_a, self.store_a)
+        payload = {
+            "shipping_name": "No Zone",
+            "phone": "01799999999",
+            "email": "no-zone@example.com",
+            "shipping_address": "Address",
+            "district": "Dhaka",
+            "items": [
+                {
+                    "product": self.product_a.public_id,
+                    "quantity": 1,
+                    "price": "10.00",
+                }
+            ],
+        }
+        resp = self.client.post("/api/v1/admin/orders/", payload, format="json")
+        self.assertEqual(resp.status_code, 400)
+        self.assertIn("shipping_zone", resp.data)
+
+    def test_admin_order_create_with_shipping_zone_only_succeeds(self):
+        """Admin order create accepts explicit shipping_zone without shipping_method."""
+        self._auth_as(self.admin_a, self.store_a)
+        payload = {
+            "shipping_name": "Zone Only",
+            "phone": "01799999999",
+            "email": "zone-only@example.com",
+            "shipping_address": "Address",
+            "district": "Dhaka",
+            "shipping_zone": self.zone_a.public_id,
+            "items": [
+                {
+                    "product": self.product_a.public_id,
+                    "quantity": 1,
+                    "price": "10.00",
+                }
+            ],
+        }
+        resp = self.client.post("/api/v1/admin/orders/", payload, format="json")
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    def test_admin_order_detail_handles_deleted_product_item(self):
+        """Deleted product references in order items must serialize as unavailable."""
+        order = _make_order(self.store_a, "deleted-product@example.com")
+        OrderItem.objects.create(
+            order=order,
+            product=self.product_a,
+            quantity=1,
+            price="10.00",
+        )
+        self.product_a.delete()
+
+        self._auth_as(self.admin_a, self.store_a)
+        resp = self.client.get(f"/api/v1/admin/orders/{order.public_id}/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data["items"]), 1)
+        item = resp.data["items"][0]
+        self.assertIsNone(item["product"])
+        self.assertEqual(item["product_name"], "Unavailable")
+        self.assertEqual(item["status"], "deleted")
 
     # ------------------------------------------------------------------
     # Customer isolation
@@ -1243,11 +1326,23 @@ class RolePermissionIsolationTests(TestCase):
         resp2 = self.client.get(f"/api/v1/admin/products/{self.product.public_id}/")
         self.assertEqual(resp2.status_code, 200)
 
-    def test_admin_can_delete_products(self):
-        """ADMIN role must be able to delete products."""
+    def test_admin_cannot_delete_products(self):
+        """Store ADMIN role must not be able to delete products."""
         self._auth_as(self.admin_user)
         resp = self.client.delete(f"/api/v1/admin/products/{self.product.public_id}/")
-        self.assertEqual(resp.status_code, 204, "ADMIN must be able to delete products")
+        self.assertEqual(resp.status_code, 403, "Store ADMIN must not be able to delete products")
+
+    def test_platform_superuser_can_delete_products(self):
+        """Platform superuser can delete products from backend."""
+        superuser = make_user(
+            "platform-super@example.com",
+            is_staff=True,
+            is_superuser=True,
+        )
+        _make_membership(superuser, self.store, StoreMembership.Role.OWNER)
+        self._auth_as(superuser)
+        resp = self.client.delete(f"/api/v1/admin/products/{self.product.public_id}/")
+        self.assertEqual(resp.status_code, 204, "Platform superuser must be able to delete products")
 
     def test_staff_cannot_update_store_branding(self):
         """STAFF role must receive 403 when attempting to update store branding."""
@@ -1429,13 +1524,12 @@ class CustomerAggregationFromOrderTests(TestCase):
         self.store_b = _make_store("Agg Store B", "agg-b.local")
 
     def _create_order(self, store, phone="01700000000", email=""):
-        return Order.objects.create(
-            store=store,
-            order_number=f"T{_uuid.uuid4().hex[:12].upper()}",
+        return _make_order(
+            store,
+            email=email,
             shipping_name="John Doe",
             shipping_address="Road 1",
             phone=phone,
-            email=email,
         )
 
     def test_resolve_customer_by_store_and_phone(self):

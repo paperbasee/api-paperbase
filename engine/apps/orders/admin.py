@@ -34,7 +34,7 @@ class OrderAdmin(admin.ModelAdmin):
     form = OrderAdminForm
     list_display = [
         'product_names', 'shipping_name', 'phone', 'district',
-        'delivery_area', 'status', 'total', 'created_at',
+        'status', 'total', 'created_at',
     ]
     list_filter = ['status', 'created_at']
     inlines = [OrderItemInline, OrderAddressInline, OrderStatusHistoryInline]
@@ -114,7 +114,6 @@ class OrderAdmin(admin.ModelAdmin):
                         "phone",
                         "shipping_address",
                         "district",
-                        "delivery_area",
                         "tracking_number",
                     )
                 },
@@ -228,7 +227,10 @@ class OrderAdmin(admin.ModelAdmin):
 
     @admin.display(description='Products')
     def product_names(self, obj: Order):
-        names = [oi.product.name for oi in obj.items.select_related('product').all()]
+        names = [
+            oi.product.name if oi.product else "Unavailable"
+            for oi in obj.items.select_related('product').all()
+        ]
         if not names:
             return ''
         if len(names) <= 3:

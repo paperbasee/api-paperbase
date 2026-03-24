@@ -17,6 +17,43 @@ python manage.py runserver
 
 API base: `http://127.0.0.1:8000/api/v1/`
 
+## Seed products
+
+Two built-in product seed commands are available:
+
+- `seed_products`: clears existing products for the selected store and seeds a large demo catalog.
+- `seed_apparel_demo`: seeds demo apparel products with variants (shirt + pant).
+
+Run from `backend/`:
+
+```bash
+source venv/bin/activate
+python manage.py migrate
+python manage.py seed_products
+```
+
+For apparel demo:
+
+```bash
+source venv/bin/activate
+python manage.py seed_apparel_demo
+```
+
+Useful options:
+
+```bash
+# Seed a specific active store by internal store PK
+python manage.py seed_apparel_demo --store-id 4
+
+# Re-create demo apparel products (remove old demo rows first)
+python manage.py seed_apparel_demo --force
+```
+
+Notes:
+- Seed payload files live in `seeds/products/`.
+- Create at least one active store first, or seed commands will exit.
+- `seed_products` deletes current products for the target store before reseeding.
+
 ## Project structure
 
 ```

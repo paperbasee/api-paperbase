@@ -21,6 +21,17 @@ class IsStaffUser(BasePermission):
         return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
+class IsPlatformSuperuser(BasePermission):
+    """Allow only authenticated platform superusers."""
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and request.user.is_superuser
+        )
+
+
 class IsDashboardUser(BasePermission):
     """
     Allow authenticated users who are either staff OR have an active store membership

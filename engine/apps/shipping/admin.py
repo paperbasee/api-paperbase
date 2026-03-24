@@ -9,7 +9,7 @@ class ShippingRateInline(admin.TabularInline):
 
 @admin.register(ShippingZone)
 class ShippingZoneAdmin(admin.ModelAdmin):
-    list_display = ['store', 'name', 'delivery_areas', 'districts', 'is_active']
+    list_display = ['store', 'name', 'is_active']
     list_editable = ['is_active']
     list_filter = ['store', 'is_active']
 

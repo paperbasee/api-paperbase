@@ -115,8 +115,9 @@ def track_purchase(request, order, integration) -> None:
         event_data["contents"] = [
             {"id": item.product.public_id, "quantity": item.quantity}
             for item in items
+            if item.product
         ]
-        event_data["num_items"] = sum(i.quantity for i in items)
+        event_data["num_items"] = sum(i.quantity for i in items if i.product)
 
     _send_event(integration, "Purchase", event_data, user_data)
 
