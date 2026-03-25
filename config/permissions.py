@@ -38,7 +38,7 @@ class IsDashboardUser(BasePermission):
     AND an active subscription (or a default plan as fallback).
 
     Staff/superusers bypass the subscription check and retain full access.
-    Django admin (/admin/) still requires is_staff separately.
+    Django admin site still requires `is_staff` separately.
     """
 
     def has_permission(self, request, view):

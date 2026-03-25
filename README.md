@@ -155,4 +155,5 @@ To add a payment gateway, implement the flow in `engine.apps.payments` (create `
 
 ## Admin
 
-Django admin at `/admin/` (or `ADMIN_URL_PATH`). Manage products, categories, orders, inventory, payments, shipping, reviews, customers, and notifications after creating a superuser.
+Django admin at `/<ADMIN_URL_PATH>` (defaults to `/admin/`). Configure via the `ADMIN_PATH` environment variable (no leading slash).
+Manage products, categories, orders, inventory, payments, shipping, reviews, customers, and notifications after creating a superuser.

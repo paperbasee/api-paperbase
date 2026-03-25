@@ -186,7 +186,27 @@ SIMPLE_JWT = {
 
 PASSWORD_RESET_TIMEOUT = 3600
 
-ADMIN_URL_PATH = "admin/"
+def _normalize_admin_path(value: str) -> str:
+    """
+    Normalize admin path into a Django URL route segment.
+
+    - Strip leading slashes.
+    - Ensure a single trailing slash.
+    """
+    normalized = str(value).strip()
+    normalized = normalized.lstrip("/")
+    # After stripping, treat empty as default.
+    if not normalized:
+        normalized = "admin"
+    normalized = normalized.rstrip("/")
+    if not normalized:
+        normalized = "admin"
+    return f"{normalized}/"
+
+
+ADMIN_URL_PATH = _normalize_admin_path(
+    os.getenv("ADMIN_PATH", os.getenv("ADMIN_URL_PATH", "admin/"))
+)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.User"
 
