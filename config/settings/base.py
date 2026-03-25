@@ -197,7 +197,6 @@ DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@akkho.com")
 SUPPORT_FROM_EMAIL = os.getenv("SUPPORT_FROM_EMAIL", "support@akkho.com")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "")
-PLATFORM_NOTIFICATION_EMAILS = env_list("PLATFORM_NOTIFICATION_EMAILS")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 CELERY_ACCEPT_CONTENT = ["json"]
