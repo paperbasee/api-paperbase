@@ -35,7 +35,7 @@ PLATFORM_HOSTS = [
     "localhost",
     "127.0.0.1",
 ]
-PLATFORM_ROOT_DOMAIN = os.getenv("PLATFORM_ROOT_DOMAIN", "mybaas.com")
+PLATFORM_ROOT_DOMAIN = os.getenv("PLATFORM_ROOT_DOMAIN", "akkho.com")
 
 # Applications
 INSTALLED_APPS = [
@@ -193,7 +193,7 @@ AUTH_USER_MODEL = "accounts.User"
 FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@yourplatform.com")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@akkho.com")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "")
 PLATFORM_NOTIFICATION_EMAILS = env_list("PLATFORM_NOTIFICATION_EMAILS")

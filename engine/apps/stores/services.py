@@ -54,7 +54,7 @@ def provision_generated_domain(store: Store) -> Domain:
     Create the single generated subdomain for a store: <random 8–12>.PLATFORM_ROOT_DOMAIN.
     Caller must ensure no generated domain exists yet for this store.
     """
-    root = getattr(settings, "PLATFORM_ROOT_DOMAIN", "mybaas.com").lower().strip(".")
+    root = getattr(settings, "PLATFORM_ROOT_DOMAIN", "akkho.com").lower().strip(".")
     while True:
         n = secrets.randbelow(5) + 8
         label = "".join(secrets.choice(_LABEL_ALPHABET) for _ in range(n))

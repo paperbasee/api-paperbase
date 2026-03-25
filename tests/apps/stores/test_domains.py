@@ -31,13 +31,13 @@ from engine.core.ws_domain import DomainWebSocketMiddleware
 User = get_user_model()
 
 # Pinned tenant hosts (global unique Domain.domain)
-HOST_STORE_A = "a123.mybaas.com"
-HOST_STORE_B = "b456.mybaas.com"
+HOST_STORE_A = "a123.akkho.com"
+HOST_STORE_B = "b456.akkho.com"
 HOST_STORE_A_CUSTOM = "api.storea.com"
 HOST_UNVERIFIED = "unverified-tenant.example.com"
 HOST_UNKNOWN = "totally-unknown.invalid"
-HOST_WS_RATE_LIMIT = "ws-rate-limit.mybaas.com"
-HOST_HTTP_RATE_LIMIT = "http-rate-limit.mybaas.com"
+HOST_WS_RATE_LIMIT = "ws-rate-limit.akkho.com"
+HOST_HTTP_RATE_LIMIT = "http-rate-limit.akkho.com"
 
 
 def _clear_tenant_resolution_cache() -> None:
@@ -363,7 +363,7 @@ class DomainApiTests(DomainDashboardApiTestMixin, TestCase):
 
     def test_post_custom_domain_already_registered_elsewhere_returns_400(self):
         other = make_store("OtherDomainHolder")
-        pin_generated_domain(other, "odh-gen.mybaas.com")
+        pin_generated_domain(other, "odh-gen.akkho.com")
         Domain.objects.create(
             store=other,
             domain="global-taken.example.com",
@@ -552,7 +552,7 @@ class DomainModelConstraintTests(TestCase):
         with self.assertRaises(IntegrityError):
             Domain.objects.create(
                 store=self.store_a,
-                domain="second-generated.mybaas.com",
+                domain="second-generated.akkho.com",
                 is_custom=False,
                 is_verified=True,
                 is_primary=False,
@@ -572,7 +572,7 @@ class DomainModelConstraintTests(TestCase):
 
     def test_domain_save_lowercases_custom_hostname(self):
         store = make_store("NormSave")
-        pin_generated_domain(store, "normsave.mybaas.com")
+        pin_generated_domain(store, "normsave.akkho.com")
         dom = Domain(
             store=store,
             domain="MiXeD.Save.example.com",
@@ -658,7 +658,7 @@ class DomainLifecycleApiTests(DomainDashboardApiTestMixin, TestCase):
 
 class ProvisionGeneratedDomainCollisionTests(TestCase):
     def test_provision_retries_when_generated_hostname_collides(self):
-        blocked = "aaaaaaaaaa.mybaas.com"
+        blocked = "aaaaaaaaaa.akkho.com"
         blocker = make_store("CollisionBlocker")
         pin_generated_domain(blocker, blocked)
 
@@ -681,7 +681,7 @@ class ProvisionGeneratedDomainCollisionTests(TestCase):
             dom = provision_generated_domain(store)
 
         self.assertNotEqual(dom.domain.lower(), blocked)
-        self.assertTrue(dom.domain.endswith(".mybaas.com"))
+        self.assertTrue(dom.domain.endswith(".akkho.com"))
         self.assertEqual(Domain.objects.filter(store=store, is_custom=False).count(), 1)
 
 
@@ -938,10 +938,10 @@ class DomainResolutionCacheTests(TestCase):
     def setUp(self):
         _clear_tenant_resolution_cache()
         self.store = make_store("CacheStore")
-        pin_generated_domain(self.store, "cache-hit.mybaas.com", verified=True)
+        pin_generated_domain(self.store, "cache-hit.akkho.com", verified=True)
 
     def test_second_payload_fetch_is_cached(self):
-        host = "cache-hit.mybaas.com"
+        host = "cache-hit.akkho.com"
         with CaptureQueriesContext(connection) as ctx:
             get_domain_resolution_payload(host)
         self.assertGreater(len(ctx), 0)
@@ -950,7 +950,7 @@ class DomainResolutionCacheTests(TestCase):
         self.assertEqual(len(ctx), 0)
 
     def test_cache_invalidates_when_marked_unverified(self):
-        host = "cache-hit.mybaas.com"
+        host = "cache-hit.akkho.com"
         self.assertIsNotNone(get_domain_resolution_payload(host))
         d = Domain.objects.get(domain=host)
         d.is_verified = False
@@ -993,7 +993,7 @@ class SubdomainAbuseRegressionTests(TestCase):
         self.client = APIClient()
         self.store = make_store("SubAbuse")
         self.parent_host = "exact-parent.example.com"
-        pin_generated_domain(self.store, "sub-abuse-gen.mybaas.com", verified=True)
+        pin_generated_domain(self.store, "sub-abuse-gen.akkho.com", verified=True)
         Domain.objects.create(
             store=self.store,
             domain=self.parent_host,
