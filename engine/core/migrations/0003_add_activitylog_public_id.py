@@ -20,12 +20,14 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # No db_index here: AlterField(unique=True) below creates the unique btree + PG _like index.
+        # AddField(..., db_index=True) + AlterField(unique=True) would duplicate the _like index and fail.
         migrations.AddField(
             model_name="activitylog",
             name="public_id",
             field=models.CharField(
                 blank=True,
-                db_index=True,
+                db_index=False,
                 max_length=32,
                 null=True,
             ),
