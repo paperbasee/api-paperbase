@@ -1,7 +1,6 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
-import logging
 from rest_framework import permissions, views, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -49,7 +48,6 @@ from .throttles import (
 )
 
 User = get_user_model()
-logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -203,29 +201,13 @@ class RegisterView(views.APIView):
     throttle_classes = [RegisterRateThrottle]
 
     def post(self, request):
-        email = (request.data.get("email") or "").strip().lower()
-        logger.info("AUTH_REGISTER_HIT email=%s", email)
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
-            logger.info("AUTH_REGISTER_VALIDATION_FAILED email=%s", email)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
-        logger.info(
-            "AUTH_REGISTER_USER_CREATED email=%s user_public_id=%s is_active=%s is_verified=%s",
-            user.email,
-            user.public_id,
-            user.is_active,
-            user.is_verified,
-        )
         profile = get_or_create_profile(user)
         if profile.is_enabled:
             challenge = create_challenge(user, flow="register")
-            logger.info(
-                "AUTH_REGISTER_2FA_CHALLENGE_CREATED email=%s user_public_id=%s challenge_public_id=%s",
-                user.email,
-                user.public_id,
-                challenge.challenge_id,
-            )
             return Response(
                 {
                     "2fa_required": True,

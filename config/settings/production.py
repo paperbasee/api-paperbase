@@ -156,7 +156,6 @@ LOGGING = {
         # Project code: info by default.
         "engine": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "celery": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
     "root": {"handlers": ["console"], "level": "WARNING"},
 }
