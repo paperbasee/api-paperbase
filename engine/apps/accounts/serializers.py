@@ -1,4 +1,5 @@
 import base64
+import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -10,12 +11,14 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import serializers
 
 from engine.apps.emails.constants import EMAIL_VERIFICATION, PASSWORD_RESET
+from engine.apps.emails.services import send_email
 from engine.apps.emails.tasks import send_email_task
 from engine.apps.stores.models import StoreMembership
 from engine.apps.stores.services import store_primary_domain_host
 from .two_factor_service import disable_2fa
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -52,19 +55,33 @@ def _user_eligible_for_public_password_reset(email: str):
 
 
 def _send_verification_email(user, request=None):
+    logger.info("EMAIL_FUNCTION_ENTERED type=verification user_public_id=%s email=%s", user.public_id, user.email)
     uid = _uid_for(user)
     token = default_token_generator.make_token(user)
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
     link = f"{frontend_url}/auth/verify-email?uid={uid}&token={token}"
-    send_email_task.delay(
-        EMAIL_VERIFICATION,
-        user.email,
-        {
-            "user_name": user.get_short_name() or user.email,
-            "user_email": user.email,
-            "verification_link": link,
-        },
-    )
+    payload = {
+        "user_name": user.get_short_name() or user.email,
+        "user_email": user.email,
+        "verification_link": link,
+    }
+    try:
+        logger.info("SENDING_EMAIL_VIA_CELERY type=verification user_public_id=%s", user.public_id)
+        result = send_email_task.delay(
+            EMAIL_VERIFICATION,
+            user.email,
+            payload,
+        )
+        logger.info(
+            "EMAIL_TASK_ENQUEUED type=verification user_public_id=%s task_id=%s",
+            user.public_id,
+            getattr(result, "id", None),
+        )
+    except Exception:
+        logger.exception("EMAIL_TASK_ENQUEUE_FAILED type=verification user_public_id=%s", user.public_id)
+        logger.info("EMAIL_SYNC_FALLBACK_START type=verification user_public_id=%s", user.public_id)
+        send_email(EMAIL_VERIFICATION, user.email, payload)
+        logger.info("EMAIL_SYNC_FALLBACK_SUCCESS type=verification user_public_id=%s", user.public_id)
 
 
 def _send_password_reset_email(user):
@@ -123,10 +140,13 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        logger.info("REGISTER_SERIALIZER_CREATE_START email=%s", validated_data.get("email"))
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
         user = User.objects.create_user(password=password, **validated_data)
+        logger.info("REGISTER_SERIALIZER_USER_CREATED user_public_id=%s email=%s", user.public_id, user.email)
         _send_verification_email(user)
+        logger.info("REGISTER_SERIALIZER_CREATE_FINISH user_public_id=%s", user.public_id)
         return user
 
 

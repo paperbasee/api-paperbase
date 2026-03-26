@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
+import logging
 from rest_framework import permissions, views, status
 from rest_framework.response import Response
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -42,6 +43,7 @@ from .throttles import (
 )
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -148,10 +150,19 @@ class RegisterView(views.APIView):
     throttle_classes = [RegisterRateThrottle]
 
     def post(self, request):
+        email = (request.data.get("email") or "").strip().lower()
+        logger.info(
+            "USER_CREATE_API_HIT email=%s settings_module=%s",
+            email,
+            getattr(settings, "SETTINGS_MODULE", ""),
+        )
         serializer = RegisterSerializer(data=request.data)
         if not serializer.is_valid():
+            logger.info("USER_CREATE_VALIDATION_FAILED email=%s", email)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        logger.info("USER_CREATE_VALIDATION_SUCCESS email=%s", email)
         user = serializer.save()
+        logger.info("USER_CREATED_SUCCESSFULLY user_public_id=%s email=%s", user.public_id, user.email)
         profile = get_or_create_profile(user)
         if profile.is_enabled:
             challenge = create_challenge(user, flow="register")
