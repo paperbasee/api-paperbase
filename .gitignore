@@ -49,3 +49,6 @@ media_local/
 .env
 .env.example
 .env.railway
+
+# Other
+db.sh

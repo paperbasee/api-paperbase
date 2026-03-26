@@ -10,6 +10,8 @@ from .services import activate_subscription, extend_subscription
 from engine.apps.stores.services import sync_order_email_notification_settings_for_user
 
 User = get_user_model()
+PLAN_ESSENTIAL = "Essential"
+PLAN_PREMIUM = "Premium"
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +125,7 @@ class PaymentAdmin(admin.ModelAdmin):
 
 
 def _get_plan(name):
-    plan = Plan.objects.filter(name=name, is_active=True).first()
+    plan = Plan.objects.filter(name__iexact=name, is_active=True).first()
     return plan
 
 
@@ -161,7 +163,7 @@ def _activate_plan_for_users(modeladmin, request, queryset, plan_name, duration_
 def grant_basic_action(modeladmin, request, queryset):
     _activate_plan_for_users(
         modeladmin, request, queryset,
-        plan_name="basic",
+        plan_name=PLAN_ESSENTIAL,
         duration_days=30,
         source="manual",
         label="Basic plan activated",
@@ -172,7 +174,7 @@ def grant_basic_action(modeladmin, request, queryset):
 def activate_premium_action(modeladmin, request, queryset):
     _activate_plan_for_users(
         modeladmin, request, queryset,
-        plan_name="premium",
+        plan_name=PLAN_PREMIUM,
         duration_days=30,
         source="manual",
         label="Premium plan activated",
@@ -183,7 +185,7 @@ def activate_premium_action(modeladmin, request, queryset):
 def grant_free_trial_action(modeladmin, request, queryset):
     _activate_plan_for_users(
         modeladmin, request, queryset,
-        plan_name="premium",
+        plan_name=PLAN_PREMIUM,
         duration_days=14,
         source="trial",
         label="14-day Premium trial granted",

@@ -79,5 +79,10 @@ if [ "$1" = "seed-email-templates" ]; then
   exec python3 manage.py seed_email_templates
 fi
 
+if [ "$1" = "seed-plans" ]; then
+  echo "Running Django command: seed_plans"
+  exec python3 manage.py seed_plans
+fi
+
 echo "Running Django command: $*"
 exec python3 manage.py "$@"
