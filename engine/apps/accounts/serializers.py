@@ -1,4 +1,5 @@
 import base64
+import logging
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -16,6 +17,7 @@ from engine.apps.stores.services import store_primary_domain_host
 from .two_factor_service import disable_2fa
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -56,7 +58,12 @@ def _send_verification_email(user, request=None):
     token = default_token_generator.make_token(user)
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
     link = f"{frontend_url}/auth/verify-email?uid={uid}&token={token}"
-    send_email_task.delay(
+    logger.info(
+        "EMAIL_VERIFICATION_TRIGGER_ENTERED email=%s user_public_id=%s",
+        user.email,
+        user.public_id,
+    )
+    result = send_email_task.delay(
         EMAIL_VERIFICATION,
         user.email,
         {
@@ -64,6 +71,12 @@ def _send_verification_email(user, request=None):
             "user_email": user.email,
             "verification_link": link,
         },
+    )
+    logger.info(
+        "EMAIL_VERIFICATION_TASK_QUEUED email=%s user_public_id=%s task_id=%s",
+        user.email,
+        user.public_id,
+        getattr(result, "id", None),
     )
 
 
@@ -123,6 +136,8 @@ class RegisterSerializer(serializers.Serializer):
         return attrs
 
     def create(self, validated_data):
+        email = validated_data.get("email")
+        logger.info("REGISTER_SERIALIZER_CREATE_ENTERED email=%s", email)
         validated_data.pop("password_confirm")
         password = validated_data.pop("password")
         user = User.objects.create_user(
@@ -130,6 +145,13 @@ class RegisterSerializer(serializers.Serializer):
             is_active=False,
             is_verified=False,
             **validated_data,
+        )
+        logger.info(
+            "REGISTER_SERIALIZER_USER_CREATED email=%s user_public_id=%s is_active=%s is_verified=%s",
+            user.email,
+            user.public_id,
+            user.is_active,
+            user.is_verified,
         )
         _send_verification_email(user)
         return user
