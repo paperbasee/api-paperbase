@@ -32,6 +32,19 @@ class IsPlatformSuperuser(BasePermission):
         )
 
 
+class IsVerifiedUser(BasePermission):
+    """Allow only authenticated users with verified email."""
+
+    message = "Email verification is required."
+
+    def has_permission(self, request, view):
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and getattr(request.user, "is_verified", False)
+        )
+
+
 class IsDashboardUser(BasePermission):
     """
     Allow authenticated users who are either staff OR have an active store membership
@@ -43,6 +56,8 @@ class IsDashboardUser(BasePermission):
 
     def has_permission(self, request, view):
         if not request.user or not getattr(request.user, "is_authenticated", False):
+            return False
+        if not getattr(request.user, "is_verified", False):
             return False
         if request.user.is_staff:
             return True
@@ -69,6 +84,8 @@ class IsStoreStaff(BasePermission):
         user = request.user
         if not getattr(user, "is_authenticated", False):
             return False
+        if not getattr(user, "is_verified", False):
+            return False
 
         ctx = get_active_store(request)
         if not ctx.store or not ctx.membership:
@@ -91,6 +108,8 @@ class IsStoreAdmin(BasePermission):
     def has_permission(self, request, view):
         user = request.user
         if not getattr(user, "is_authenticated", False):
+            return False
+        if not getattr(user, "is_verified", False):
             return False
 
         ctx = get_active_store(request)

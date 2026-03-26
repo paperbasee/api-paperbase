@@ -47,4 +47,5 @@ media_local/
 
 # Env
 .env
-.env.local
+.env.example
+.env.railway

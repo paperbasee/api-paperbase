@@ -136,6 +136,7 @@ def _ensure_default_plan():
 
 def make_user(email, password="pass1234", **kwargs):
     """Create a user using only email (no username)."""
+    kwargs.setdefault("is_verified", True)
     return User.objects.create_user(email=email, password=password, **kwargs)
 
 
@@ -672,7 +673,7 @@ class PasswordManagementTests(TestCase):
 class EmailVerificationTests(TestCase):
     def setUp(self):
         self.client = APIClient()
-        self.user = make_user("verify@example.com")
+        self.user = make_user("verify@example.com", is_verified=False, is_active=False)
         patcher = patch("engine.apps.accounts.serializers.send_email_task.delay")
         self._mock_send_email = patcher.start()
         self.addCleanup(patcher.stop)
@@ -683,11 +684,35 @@ class EmailVerificationTests(TestCase):
             {"email": "verify@example.com", "password": "pass1234"},
             format="json",
         )
-        self.assertEqual(resp.status_code, 200)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.data.get("code"), "email_not_verified")
+        return resp
 
     def test_new_user_is_not_verified(self):
         self.assertFalse(self.user.is_verified)
+        self.assertFalse(self.user.is_active)
+
+    def test_register_creates_inactive_unverified_user_without_tokens(self):
+        resp = self.client.post(
+            "/api/v1/auth/register/",
+            {
+                "email": "new-user@example.com",
+                "password": "StrongPass123!",
+                "password_confirm": "StrongPass123!",
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertTrue(resp.data.get("email_verification_required"))
+        self.assertNotIn("access", resp.data)
+        self.assertNotIn("refresh", resp.data)
+        user = User.objects.get(email="new-user@example.com")
+        self.assertFalse(user.is_verified)
+        self.assertFalse(user.is_active)
+
+    def test_unverified_user_cannot_login(self):
+        resp = self._authenticate()
+        self.assertEqual(resp.data.get("detail"), "Email verification is required.")
 
     def test_email_verify_with_valid_token(self):
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
@@ -700,6 +725,24 @@ class EmailVerificationTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.is_verified)
+        self.assertTrue(self.user.is_active)
+
+    def test_user_can_login_after_verification(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        verify_resp = self.client.post(
+            "/api/v1/auth/email/verify/",
+            {"uid": uid, "token": token},
+            format="json",
+        )
+        self.assertEqual(verify_resp.status_code, 200)
+        login_resp = self.client.post(
+            "/api/v1/auth/token/",
+            {"email": "verify@example.com", "password": "pass1234"},
+            format="json",
+        )
+        self.assertEqual(login_resp.status_code, 200)
+        self.assertIn("access", login_resp.data)
 
     def test_email_verify_rejects_invalid_token(self):
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
@@ -711,14 +754,21 @@ class EmailVerificationTests(TestCase):
         self.assertEqual(resp.status_code, 400)
 
     def test_resend_verification_for_unverified_user(self):
-        self._authenticate()
+        self.client.credentials()
         resp = self.client.post("/api/v1/auth/email/resend-verification/", format="json")
-        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.status_code, 401)
 
     def test_resend_verification_rejected_if_already_verified(self):
         self.user.is_verified = True
-        self.user.save()
-        self._authenticate()
+        self.user.is_active = True
+        self.user.save(update_fields=["is_verified", "is_active", "updated_at"])
+        auth_resp = self.client.post(
+            "/api/v1/auth/token/",
+            {"email": "verify@example.com", "password": "pass1234"},
+            format="json",
+        )
+        self.assertEqual(auth_resp.status_code, 200)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {auth_resp.data['access']}")
         resp = self.client.post("/api/v1/auth/email/resend-verification/", format="json")
         self.assertEqual(resp.status_code, 400)
 
