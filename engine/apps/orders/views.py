@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 
 from engine.apps.cart.views import get_or_create_cart
 from engine.apps.analytics.service import meta_conversions
-from engine.core.tenancy import get_active_store
+from engine.core.tenancy import require_api_key_store
 
 from .models import Order, OrderItem
 from .serializers import OrderCreateSerializer, OrderSerializer, DirectOrderCreateSerializer
@@ -23,10 +23,16 @@ from .stock import adjust_stock
 from .throttles import DirectOrderRateThrottle
 from engine.apps.shipping.service import quote_shipping
 from engine.apps.emails.triggers import notify_store_new_order
+from engine.core.realtime import emit_store_event
 
 
 def _notify_order_created(order: Order) -> None:
     notify_store_new_order(order)
+    emit_store_event(
+        order.store.public_id,
+        "payment_success",
+        {"order_public_id": order.public_id},
+    )
 
 
 class OrderCreateView(CreateAPIView):
@@ -36,6 +42,7 @@ class OrderCreateView(CreateAPIView):
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
+        request_store = require_api_key_store(request)
         cart = get_or_create_cart(request)
         items = list(cart.items.select_related('product', 'variant'))
         if not items:
@@ -114,8 +121,7 @@ class OrderCreateView(CreateAPIView):
 
         # Create order and reduce stock
         subtotal = Decimal('0.00')
-        ctx = get_active_store(request)
-        if ctx.store and ctx.store.id != store.id:
+        if request_store.id != store.id:
             return Response(
                 {"detail": "Store mismatch for this checkout request."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -218,12 +224,7 @@ class DirectOrderCreateView(CreateAPIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
-        ctx = get_active_store(request)
-        if not ctx.store:
-            return Response(
-                {"detail": "No active store resolved for this order request."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        request_store = require_api_key_store(request)
 
         # Get products with locked rows for atomic stock updates
         from engine.apps.products.models import Product
@@ -233,7 +234,7 @@ class DirectOrderCreateView(CreateAPIView):
             p.public_id: p
             for p in Product.objects.filter(
                 public_id__in=product_public_ids,
-                store=ctx.store,
+                store=request_store,
                 is_active=True,
                 status=Product.Status.ACTIVE,
             ).select_for_update()
@@ -256,7 +257,7 @@ class DirectOrderCreateView(CreateAPIView):
         # Resolve store from the (now validated) locked products set.
         first_product = next(iter(locked_products.values()))
         order_store = first_product.store
-        if order_store.id != ctx.store.id:
+        if order_store.id != request_store.id:
             return Response(
                 {"detail": "Store mismatch for this order request."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -385,10 +386,8 @@ class OrderListView(ListAPIView):
     def get_queryset(self):
         if not self.request.user.is_authenticated:
             return Order.objects.none()
-        ctx = get_active_store(self.request)
-        if not ctx.store:
-            return Order.objects.none()
-        return Order.objects.filter(user=self.request.user, store=ctx.store).prefetch_related(
+        store = require_api_key_store(self.request)
+        return Order.objects.filter(user=self.request.user, store=store).prefetch_related(
             'items__product', 'items__product__images'
         )
 
@@ -402,10 +401,8 @@ class OrderDetailView(RetrieveAPIView):
 
     def get_object(self):
         public_id = self.kwargs.get(self.lookup_url_kwarg)
-        ctx = get_active_store(self.request)
-        if not ctx.store:
-            raise NotFound()
-        order = self.get_queryset().filter(public_id=public_id, store=ctx.store).first()
+        store = require_api_key_store(self.request)
+        order = self.get_queryset().filter(public_id=public_id, store=store).first()
         if not order:
             raise NotFound()
         if order.user_id and (not self.request.user.is_authenticated or order.user_id != self.request.user.id):

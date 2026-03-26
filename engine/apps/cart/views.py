@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from engine.apps.analytics.service import meta_conversions
 from engine.apps.products.models import Product
-from engine.core.tenancy import get_active_store
+from engine.core.tenancy import require_api_key_store
 
 from .models import Cart, CartItem
 from .serializers import CartAddSerializer, CartItemSerializer, CartSerializer
@@ -42,15 +42,13 @@ class CartAddView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        ctx = get_active_store(request)
-        if not ctx.store:
-            raise NotFound()
+        store = require_api_key_store(request)
         ser = CartAddSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         cart = get_or_create_cart(request)
         product = Product.objects.filter(
             public_id=ser.validated_data['product_public_id'],
-            store=ctx.store,
+            store=store,
             is_active=True,
             status=Product.Status.ACTIVE,
         ).first()
@@ -80,11 +78,16 @@ class CartUpdateView(APIView):
     permission_classes = [AllowAny]
 
     def patch(self, request, item_public_id):
+        store = require_api_key_store(request)
         cart = get_or_create_cart(request)
         quantity = request.data.get('quantity')
         if quantity is None or not isinstance(quantity, int) or quantity < 1:
             return Response({'quantity': ['Must be a positive integer.']}, status=400)
-        item = CartItem.objects.filter(cart=cart, public_id=item_public_id).first()
+        item = CartItem.objects.filter(
+            cart=cart,
+            public_id=item_public_id,
+            product__store=store,
+        ).first()
         if not item:
             return Response({'detail': 'Not found.'}, status=404)
         item.quantity = quantity
@@ -97,8 +100,13 @@ class CartRemoveView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, item_public_id):
+        store = require_api_key_store(request)
         cart = get_or_create_cart(request)
-        deleted, _ = CartItem.objects.filter(cart=cart, public_id=item_public_id).delete()
+        deleted, _ = CartItem.objects.filter(
+            cart=cart,
+            public_id=item_public_id,
+            product__store=store,
+        ).delete()
         return Response({'status': 'removed', 'deleted': deleted > 0})
 
 
@@ -107,13 +115,11 @@ class CartRemoveByProductView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, product_public_id):
-        ctx = get_active_store(request)
-        if not ctx.store:
-            raise NotFound()
+        store = require_api_key_store(request)
         cart = get_or_create_cart(request)
         product = Product.objects.filter(
             public_id=product_public_id,
-            store=ctx.store,
+            store=store,
             is_active=True,
             status=Product.Status.ACTIVE,
         ).first()
@@ -128,6 +134,7 @@ class CartClearView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        store = require_api_key_store(request)
         cart = get_or_create_cart(request)
-        deleted, _ = cart.items.all().delete()
+        deleted, _ = cart.items.filter(product__store=store).delete()
         return Response({'status': 'cleared', 'deleted': deleted})

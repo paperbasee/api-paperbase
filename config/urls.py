@@ -15,6 +15,7 @@ from engine.apps.products.urls import category_urlpatterns
 api_v1_patterns = [
     path('auth/', include('engine.apps.accounts.urls')),
     path('admin/', include('config.admin_urls')),
+    path('settings/network/', include('engine.apps.stores.network_urls')),
     path('stores/', include('engine.apps.stores.urls')),
     path('products/', include('engine.apps.products.urls')),
     path('categories/', include(category_urlpatterns)),

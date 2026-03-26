@@ -13,7 +13,6 @@ from engine.apps.stores.models import StoreSettings
 from engine.apps.stores.services import (
     ORDER_EMAIL_NOTIFICATIONS_FEATURE,
     get_store_owner_user,
-    store_primary_domain_host,
 )
 
 from .constants import (
@@ -233,7 +232,7 @@ def queue_platform_new_subscription_email(user, subscription) -> None:
         "store_owner_email": user.email,
         "store_name": store_name,
         "store_public_id": store.public_id if store else "",
-        "store_domain": (store_primary_domain_host(store) or "") if store else "",
+        "store_domain": "",
         "store_owner_name_on_record": (store.owner_name or "") if store else "",
         "store_owner_email_on_record": (store.owner_email or "") if store else "",
         "store_phone": (store.phone or "") if store else "",

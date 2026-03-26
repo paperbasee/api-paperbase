@@ -5,7 +5,7 @@ from rest_framework.generics import ListAPIView, RetrieveAPIView
 from rest_framework.response import Response
 
 from engine.apps.analytics.service import meta_conversions
-from engine.core.tenancy import get_active_store, require_resolved_store
+from engine.core.tenancy import require_api_key_store, require_resolved_store
 
 from .models import Product
 from .serializers import (
@@ -29,19 +29,19 @@ class ProductListView(StorefrontTenantMixin, ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        ctx = get_active_store(self.request)
-        return services.build_product_list_queryset(ctx.store, self.request.query_params)
+        store = require_api_key_store(self.request)
+        return services.build_product_list_queryset(store, self.request.query_params)
 
     def list(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
+        store = require_api_key_store(request)
         cached = services.get_cached_product_list(
-            ctx.store.public_id, request.query_params
+            store.public_id, request.query_params
         )
         if cached is not None:
             return Response(cached)
         response = super().list(request, *args, **kwargs)
         services.set_cached_product_list(
-            ctx.store.public_id, request.query_params, response.data
+            store.public_id, request.query_params, response.data
         )
         return response
 
@@ -52,9 +52,9 @@ class ProductDetailView(StorefrontTenantMixin, RetrieveAPIView):
     lookup_url_kwarg = 'identifier'
 
     def retrieve(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
+        store = require_api_key_store(request)
         identifier = self.kwargs.get(self.lookup_url_kwarg)
-        data = services.get_product_detail(ctx.store, identifier, request)
+        data = services.get_product_detail(store, identifier, request)
         product_proxy = SimpleNamespace(
             public_id=data.get("public_id"),
             name=data.get("name"),
@@ -70,9 +70,9 @@ class ProductRelatedView(StorefrontTenantMixin, ListAPIView):
     pagination_class = None
 
     def list(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
+        store = require_api_key_store(request)
         identifier = self.kwargs.get('identifier')
-        data = services.get_related_products(ctx.store, identifier, request)
+        data = services.get_related_products(store, identifier, request)
         return Response(data)
 
 
@@ -81,21 +81,21 @@ class CategoryListView(StorefrontTenantMixin, ListAPIView):
     serializer_class = CategorySerializer
 
     def get_queryset(self):
-        ctx = get_active_store(self.request)
+        store = require_api_key_store(self.request)
         return services.build_category_list_queryset(
-            ctx.store, self.request.query_params
+            store, self.request.query_params
         )
 
     def list(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
+        store = require_api_key_store(request)
         cached = services.get_cached_category_list(
-            ctx.store.public_id, request.query_params
+            store.public_id, request.query_params
         )
         if cached is not None:
             return Response(cached)
         response = super().list(request, *args, **kwargs)
         services.set_cached_category_list(
-            ctx.store.public_id, request.query_params, response.data
+            store.public_id, request.query_params, response.data
         )
         return response
 
@@ -106,9 +106,9 @@ class CategoryDetailView(StorefrontTenantMixin, RetrieveAPIView):
     lookup_field = 'slug'
 
     def retrieve(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
+        store = require_api_key_store(request)
         slug = self.kwargs.get('slug')
-        data = services.get_category_detail(ctx.store, slug, request)
+        data = services.get_category_detail(store, slug, request)
         return Response(data)
 
 
@@ -121,7 +121,7 @@ class ProductSearchView(StorefrontTenantMixin, ListAPIView):
     serializer_class = ProductListSerializer
 
     def get_queryset(self):
-        ctx = get_active_store(self.request)
+        store = require_api_key_store(self.request)
         query = self.request.query_params.get('q', '').strip()
 
         if not query or len(query) < 2:
@@ -129,7 +129,7 @@ class ProductSearchView(StorefrontTenantMixin, ListAPIView):
 
         qs = (
             Product.objects.filter(
-                is_active=True, status=Product.Status.ACTIVE, store=ctx.store
+                is_active=True, status=Product.Status.ACTIVE, store=store
             )
             .select_related('category')
             .prefetch_related('images')

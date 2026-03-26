@@ -30,6 +30,8 @@ class DashboardStatsView(APIView):
     def get(self, request):
         ctx = get_active_store(request)
         store = ctx.store
+        if not store:
+            raise PermissionDenied("No active store resolved.")
 
         order_qs = Order.objects.all()
         product_qs = Product.objects.all()
@@ -39,16 +41,13 @@ class DashboardStatsView(APIView):
         cart_qs = Cart.objects.filter(items__isnull=False)
         wishlist_qs = WishlistItem.objects.all()
 
-        if store:
-            order_qs = order_qs.filter(store=store)
-            product_qs = product_qs.filter(store=store)
-            category_qs = category_qs.filter(store=store)
-            support_ticket_qs = support_ticket_qs.filter(store=store)
-            notification_qs = notification_qs.filter(store=store)
-            cart_qs = cart_qs.filter(items__product__store=store)
-            wishlist_qs = wishlist_qs.filter(product__store=store)
-        else:
-            notification_qs = notification_qs.none()
+        order_qs = order_qs.filter(store=store)
+        product_qs = product_qs.filter(store=store)
+        category_qs = category_qs.filter(store=store)
+        support_ticket_qs = support_ticket_qs.filter(store=store)
+        notification_qs = notification_qs.filter(store=store)
+        cart_qs = cart_qs.filter(items__product__store=store)
+        wishlist_qs = wishlist_qs.filter(product__store=store)
 
         order_counts = order_qs.aggregate(
             total_count=Count('id'),
@@ -254,6 +253,8 @@ class DashboardStatsOverviewView(APIView):
         ctx = get_active_store(request)
         store = ctx.store
         if not store:
+            raise PermissionDenied("No active store resolved.")
+        if not store:
             return Response({"summary": {}, "series": [], "meta": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "bucket": bucket}})
 
         existing = StoreDashboardStatsSnapshot.objects.filter(
@@ -363,12 +364,11 @@ class DashboardAnalyticsView(APIView):
             created_at__date__lte=end_date,
         )
 
-        if store:
-            order_qs = order_qs.filter(store=store)
-            product_qs = product_qs.filter(store=store)
-            cart_item_qs = cart_item_qs.filter(product__store=store)
-            wishlist_qs = wishlist_qs.filter(product__store=store)
-            support_ticket_qs = support_ticket_qs.filter(store=store)
+        order_qs = order_qs.filter(store=store)
+        product_qs = product_qs.filter(store=store)
+        cart_item_qs = cart_item_qs.filter(product__store=store)
+        wishlist_qs = wishlist_qs.filter(product__store=store)
+        support_ticket_qs = support_ticket_qs.filter(store=store)
 
         summary = {
             'totalOrders': order_qs.count(),

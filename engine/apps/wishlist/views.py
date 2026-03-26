@@ -7,7 +7,7 @@ from rest_framework.views import APIView
 
 from engine.apps.analytics.service import meta_conversions
 from engine.apps.products.models import Product
-from engine.core.tenancy import get_active_store
+from engine.core.tenancy import require_api_key_store
 
 from .models import WishlistItem
 from .serializers import WishlistAddSerializer, WishlistItemSerializer
@@ -28,8 +28,10 @@ class WishlistListView(ListAPIView):
     permission_classes = [AllowAny]
 
     def get_queryset(self):
+        store = require_api_key_store(self.request)
         return WishlistItem.objects.filter(
-            **_wishlist_filter(self.request)
+            product__store=store,
+            **_wishlist_filter(self.request),
         ).select_related('product').prefetch_related('product__images')
 
 
@@ -38,14 +40,12 @@ class WishlistAddView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        ctx = get_active_store(request)
-        if not ctx.store:
-            raise NotFound()
+        store = require_api_key_store(request)
         ser = WishlistAddSerializer(data=request.data, context={"request": request})
         ser.is_valid(raise_exception=True)
         product = Product.objects.filter(
             public_id=ser.validated_data['product_public_id'],
-            store=ctx.store,
+            store=store,
             is_active=True,
             status=Product.Status.ACTIVE,
         ).first()
@@ -66,12 +66,10 @@ class WishlistRemoveView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request, product_public_id):
-        ctx = get_active_store(request)
-        if not ctx.store:
-            raise NotFound()
+        store = require_api_key_store(request)
         product = Product.objects.filter(
             public_id=product_public_id,
-            store=ctx.store,
+            store=store,
             is_active=True,
             status=Product.Status.ACTIVE,
         ).first()
@@ -88,7 +86,9 @@ class WishlistClearView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        store = require_api_key_store(request)
         deleted, _ = WishlistItem.objects.filter(
+            product__store=store,
             **_wishlist_filter(request)
         ).delete()
         return Response({'status': 'cleared', 'deleted': deleted})

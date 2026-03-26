@@ -15,11 +15,19 @@ class CartItemSerializer(serializers.ModelSerializer):
 
 
 class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True, read_only=True)
+    items = serializers.SerializerMethodField()
 
     class Meta:
         model = Cart
         fields = ['public_id', 'items', 'created_at', 'updated_at']
+
+    def get_items(self, obj):
+        request = self.context.get("request")
+        ctx = get_active_store(request) if request else None
+        if not ctx or not ctx.store:
+            return []
+        qs = obj.items.filter(product__store=ctx.store).select_related("product").prefetch_related("product__images")
+        return CartItemSerializer(qs, many=True, context=self.context).data
 
 
 class CartAddSerializer(serializers.Serializer):

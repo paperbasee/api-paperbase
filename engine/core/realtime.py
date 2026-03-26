@@ -25,3 +25,15 @@ def emit_store_event(store_public_id: str, event_type: str, payload: dict) -> No
             "payload": payload or {},
         },
     )
+
+
+def emit_store_events(store_public_id: str, event_types: list[str], payload: dict) -> None:
+    """
+    Emit multiple store-scoped events for transition compatibility.
+    """
+    seen: set[str] = set()
+    for event_type in event_types:
+        if not event_type or event_type in seen:
+            continue
+        seen.add(event_type)
+        emit_store_event(store_public_id, event_type, payload)

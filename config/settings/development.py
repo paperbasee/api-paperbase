@@ -23,17 +23,13 @@ CHANNEL_LAYERS = {
     "default": {"BACKEND": "channels.layers.InMemoryChannelLayer"},
 }
 
-# Cache: local by default, Redis optional for tenant resolution.
+# Cache: local by default, Redis optional.
 _tenant_cache_redis_url = os.getenv("REDIS_URL", "").strip()  # noqa: F405
 if TESTING:  # noqa: F405
     CACHES = {
         "default": {
             "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
             "LOCATION": "default-tests",
-        },
-        TENANT_RESOLUTION_CACHE_ALIAS: {  # noqa: F405
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "tenant-resolution-tests",
         },
     }
 else:
@@ -43,20 +39,12 @@ else:
                 "BACKEND": "django.core.cache.backends.redis.RedisCache",
                 "LOCATION": _tenant_cache_redis_url,
             },
-            TENANT_RESOLUTION_CACHE_ALIAS: {  # noqa: F405
-                "BACKEND": "django.core.cache.backends.redis.RedisCache",
-                "LOCATION": _tenant_cache_redis_url,
-            },
         }
     else:
         CACHES = {
             "default": {
                 "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
                 "LOCATION": "default-local",
-            },
-            TENANT_RESOLUTION_CACHE_ALIAS: {  # noqa: F405
-                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-                "LOCATION": "tenant-resolution-local",
             },
         }
 

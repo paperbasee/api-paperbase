@@ -10,8 +10,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
-from engine.apps.stores.models import Domain, Store, StoreMembership
-from engine.core.tenancy import resolve_store_from_host, get_active_store
+from engine.apps.stores.models import Store, StoreMembership
+from engine.core.tenancy import get_active_store
 from engine.core.ids import generate_public_id
 from engine.core.models import ActivityLog
 from engine.apps.support.models import SupportTicket
@@ -41,14 +41,9 @@ def _make_store(name, domain, owner_email=None):
     email = owner_email or f"owner@{domain}"
     store = Store.objects.create(
         name=name,
-        domain=None,
         owner_name=f"{name} Owner",
         owner_email=email,
     )
-    if domain:
-        Domain.objects.filter(store=store, is_custom=False).update(
-            domain=domain.strip().lower().split(":", 1)[0]
-        )
     return store
 
 
@@ -158,17 +153,6 @@ class TenancyTests(TestCase):
             role=StoreMembership.Role.OWNER,
         )
 
-    def test_resolve_store_from_host(self):
-        request = self.factory.get("/", HTTP_HOST="teststore.local")
-        store = resolve_store_from_host(request)
-        self.assertIsNotNone(store)
-        self.assertEqual(store.id, self.store.id)
-
-    def test_platform_host_does_not_resolve_store(self):
-        request = self.factory.get("/", HTTP_HOST="localhost")
-        store = resolve_store_from_host(request)
-        self.assertIsNone(store)
-
     def test_get_active_store_from_header_with_public_id(self):
         request = self.factory.get("/", HTTP_X_STORE_PUBLIC_ID=self.store.public_id)
         request.user = self.user
@@ -182,8 +166,8 @@ class TenancyTests(TestCase):
             "/api/v1/products/",
             HTTP_HOST="unknown-tenant.invalid",
         )
-        self.assertEqual(resp.status_code, 403)
-        self.assertEqual(resp.json().get("detail"), "Unknown tenant host.")
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.json().get("detail"), "Store not found.")
 
     def test_tenant_api_auth_exempt_on_unknown_host(self):
         resp = self.client.post(
@@ -740,7 +724,7 @@ class EmailVerificationTests(TestCase):
             {"email": "verify@example.com", "password": "pass1234"},
             format="json",
         )
-        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.data.get("code"), "email_not_verified")
         return resp
 

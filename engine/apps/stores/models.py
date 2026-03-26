@@ -1,15 +1,7 @@
 from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models
 
 from engine.core.ids import generate_public_id
-
-
-class ActiveDomainManager(models.Manager):
-    """Domains that are not soft-deleted (default for app code)."""
-
-    def get_queryset(self):
-        return super().get_queryset().filter(is_deleted=False)
 
 
 class Store(models.Model):
@@ -24,13 +16,6 @@ class Store(models.Model):
         max_length=60,
         blank=True,
         help_text="Store type/category (e.g. Fashion, Retail, E-commerce). Max 4 words.",
-    )
-    domain = models.CharField(
-        max_length=255,
-        unique=True,
-        null=True,
-        blank=True,
-        help_text="Full domain or host used to route requests to this store. Set via Settings > Networking.",
     )
     is_active = models.BooleanField(default=True)
     # Owner info (always stored with the store)
@@ -54,7 +39,6 @@ class Store(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["domain"]),
             models.Index(fields=["is_active", "created_at"]),
         ]
 
@@ -64,93 +48,7 @@ class Store(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
-        from .services import store_primary_domain_host
-
-        host = store_primary_domain_host(self)
-        return f"{self.name}" + (f" ({host})" if host else "")
-
-
-class Domain(models.Model):
-    """
-    HTTP/WebSocket tenant hostname for a store.
-
-    Each store has exactly one generated subdomain (is_custom=False) and at most one
-    custom domain (is_custom=True). Routing uses verified domains only.
-    """
-
-    objects = ActiveDomainManager()
-    all_objects = models.Manager()
-
-    public_id = models.CharField(
-        max_length=32,
-        unique=True,
-        db_index=True,
-        editable=False,
-        help_text="External identifier (e.g. dom_xxx).",
-    )
-    store = models.ForeignKey(
-        "stores.Store",
-        on_delete=models.CASCADE,
-        related_name="domains",
-    )
-    domain = models.CharField(max_length=255)
-    is_custom = models.BooleanField(default=False)
-    is_verified = models.BooleanField(default=False)
-    verification_token = models.CharField(max_length=64, null=True, blank=True)
-    is_primary = models.BooleanField(default=False)
-    is_deleted = models.BooleanField(default=False, db_index=True)
-    deleted_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["domain"],
-                condition=models.Q(is_deleted=False),
-                name="domain_unique_when_active",
-            ),
-            models.UniqueConstraint(
-                fields=["store"],
-                condition=models.Q(is_custom=True) & models.Q(is_deleted=False),
-                name="one_custom_domain_per_store",
-            ),
-            models.UniqueConstraint(
-                fields=["store"],
-                condition=models.Q(is_custom=False) & models.Q(is_deleted=False),
-                name="one_generated_domain_per_store",
-            ),
-            models.UniqueConstraint(
-                fields=["store"],
-                condition=models.Q(is_primary=True) & models.Q(is_deleted=False),
-                name="one_primary_domain_per_store",
-            ),
-        ]
-        indexes = [
-            models.Index(fields=["domain"]),
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self.public_id:
-            self.public_id = generate_public_id("domain")
-        from .services import normalize_domain_host
-
-        if self.domain:
-            self.domain = normalize_domain_host(self.domain)
-        if self.pk:
-            prior = (
-                Domain.all_objects.filter(pk=self.pk)
-                .only("domain", "is_custom")
-                .first()
-            )
-            if prior and not prior.is_custom:
-                prior_norm = normalize_domain_host(prior.domain)
-                if prior_norm != self.domain:
-                    raise ValidationError("Generated store subdomain cannot be changed.")
-        super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return self.domain
+        return self.name
 
 
 class StoreSettings(models.Model):
@@ -182,6 +80,10 @@ class StoreSettings(models.Model):
     email_customer_on_order_confirmed = models.BooleanField(
         default=False,
         help_text="Premium: email customer when order is confirmed (send-to-courier).",
+    )
+    public_api_enabled = models.BooleanField(
+        default=False,
+        help_text="Allow public storefront read endpoints without API key for this store.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -321,4 +223,50 @@ class StoreDeletionJob(models.Model):
 
     def __str__(self) -> str:
         return f"StoreDeletionJob({self.store_public_id_snapshot})[{self.status}]"
+
+
+class StoreApiKey(models.Model):
+    """
+    Store-scoped API key material (hash only).
+
+    Plaintext API keys are never stored. Keys are validated by hashing incoming
+    key material and matching the digest against key_hash.
+    """
+
+    public_id = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        editable=False,
+        help_text="Non-sequential public identifier (e.g. sak_xxx).",
+    )
+    store = models.ForeignKey(
+        Store,
+        on_delete=models.CASCADE,
+        related_name="api_keys",
+    )
+    key_hash = models.CharField(
+        max_length=64,
+        unique=True,
+        db_index=True,
+        help_text="HMAC-SHA256 digest of API key material.",
+    )
+    key_prefix = models.CharField(max_length=16, blank=True, default="")
+    key_last4 = models.CharField(max_length=4, blank=True, default="")
+    label = models.CharField(max_length=80, blank=True, default="")
+    is_active = models.BooleanField(default=True, db_index=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["store", "is_active", "created_at"]),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.public_id:
+            self.public_id = generate_public_id("storeapikey")
+        super().save(*args, **kwargs)
 

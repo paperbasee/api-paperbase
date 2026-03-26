@@ -1,14 +1,14 @@
 from rest_framework.generics import ListAPIView
 from rest_framework.response import Response
 
-from engine.core.tenancy import get_active_store, require_resolved_store
+from engine.core.tenancy import require_api_key_store, require_resolved_store
 
 from .serializers import NotificationSerializer
 from . import services
 
 
 class _StorefrontTenantMixin:
-    """Public storefront: require host-resolved (or header) tenant before listing."""
+    """Public storefront: require API-key resolved tenant before listing."""
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
@@ -22,6 +22,6 @@ class ActiveNotificationListView(_StorefrontTenantMixin, ListAPIView):
     authentication_classes = []
 
     def list(self, request, *args, **kwargs):
-        ctx = get_active_store(request)
-        data = services.get_active_notifications(ctx.store, request)
+        store = require_api_key_store(request)
+        data = services.get_active_notifications(store, request)
         return Response(data)

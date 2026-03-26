@@ -7,7 +7,6 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import serializers
 
 from engine.apps.stores.models import StoreMembership
-from engine.apps.stores.services import store_primary_domain_host
 from .services import (
     change_user_password,
     request_password_reset,
@@ -159,7 +158,6 @@ class MeSerializer(serializers.ModelSerializer):
             {
                 "public_id": m.store.public_id,
                 "name": m.store.name,
-                "domain": store_primary_domain_host(m.store),
                 "role": m.get_role_display(),
             }
             for m in memberships

@@ -52,6 +52,7 @@ _PREFIXES: dict[str, str] = {
     "emailtemplate": "emt",
     "emaillog": "eml",
     "twofarecovery": "tfr",
+    "storeapikey": "sak",
     "domain": "dom",
 }
 

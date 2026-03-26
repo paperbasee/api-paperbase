@@ -1,8 +1,4 @@
-"""
-Rate limits for tenant domain resolution (HTTP + WebSocket).
-
-Uses Django cache with keys rate:ip:{ip} and rate:domain:{host} so tests work with LocMem.
-"""
+"""Rate limits for API-key authenticated tenant requests (HTTP + WebSocket)."""
 
 from __future__ import annotations
 
@@ -12,23 +8,13 @@ from django.core.cache import caches
 from django.http import HttpRequest, JsonResponse
 from django.utils.deprecation import MiddlewareMixin
 
+from engine.core.store_api_key_auth import requires_tenant_api_key
+from engine.core.ws_api_key import resolve_scope_api_key
 
-def _tenant_resolution_cache():
-    alias = getattr(settings, "TENANT_RESOLUTION_CACHE_ALIAS", "tenant_resolution")
+
+def _rate_limit_cache():
+    alias = getattr(settings, "TENANT_RATE_LIMIT_CACHE_ALIAS", "default")
     return caches[alias]
-
-
-def _normalize_host(host: str) -> str:
-    if not host:
-        return ""
-    return host.split(":", 1)[0].lower()
-
-
-def _client_ip(request: HttpRequest) -> str:
-    xff = (request.META.get("HTTP_X_FORWARDED_FOR") or "").strip()
-    if xff:
-        return xff.split(",")[0].strip()
-    return (request.META.get("REMOTE_ADDR") or "").strip() or "unknown"
 
 
 def _rate_window_seconds() -> int:
@@ -42,7 +28,7 @@ def _incr_under_limit(cache_key: str, limit: int) -> bool:
     if limit <= 0:
         return True
     window = _rate_window_seconds()
-    c = _tenant_resolution_cache()
+    c = _rate_limit_cache()
     try:
         n = c.incr(cache_key)
     except ValueError:
@@ -51,41 +37,35 @@ def _incr_under_limit(cache_key: str, limit: int) -> bool:
     return n <= limit
 
 
-def tenant_resolution_rate_check(ip: str, normalized_host: str) -> bool:
+def api_key_rate_check(api_key_id: str) -> bool:
     """
-    Apply IP + domain buckets. Returns True if request is allowed, False if rate limited.
+    Apply per-api-key fixed-window limit.
     """
-    ip_limit = int(getattr(settings, "TENANT_RESOLUTION_RATE_LIMIT_IP", 120))
-    dom_limit = int(getattr(settings, "TENANT_RESOLUTION_RATE_LIMIT_DOMAIN", 60))
-    if not _incr_under_limit(f"rate:ip:{ip}", ip_limit):
-        return False
-    if normalized_host and not _incr_under_limit(f"rate:domain:{normalized_host}", dom_limit):
-        return False
-    return True
+    per_key_limit = int(getattr(settings, "TENANT_API_KEY_RATE_LIMIT_PER_MIN", 600))
+    return _incr_under_limit(f"rate:api_key:{api_key_id}", per_key_limit)
 
 
-class TenantResolutionRateLimitMiddleware(MiddlewareMixin):
+class ApiKeyRateLimitMiddleware(MiddlewareMixin):
     """
-    On non-platform hosts, rate-limit by client IP and Host before tenant resolution.
+    Rate-limit tenant endpoints by API key identity.
     """
 
     def process_request(self, request: HttpRequest):
-        host = _normalize_host(request.get_host())
-        platform_hosts = {h.lower() for h in getattr(settings, "PLATFORM_HOSTS", [])}
-        if host in platform_hosts:
-            return None
         path = request.path
-        exempt = getattr(settings, "TENANT_RATE_LIMIT_EXEMPT_PATH_PREFIXES", ())
-        if any(path.startswith(p) for p in exempt):
+        if not requires_tenant_api_key(path):
             return None
-        ip = _client_ip(request)
-        if not tenant_resolution_rate_check(ip, host):
-            return JsonResponse({"detail": "Too many requests."}, status=429)
+        key_row = getattr(request, "api_key", None)
+        if key_row is None:
+            return None
+        if not api_key_rate_check(str(key_row.public_id)):
+            response = JsonResponse({"detail": "Too many requests."}, status=429)
+            response["Retry-After"] = str(_rate_window_seconds())
+            return response
         return None
 
 
-class WebSocketResolutionRateLimitMiddleware:
-    """ASGI: same limits as HTTP tenant resolution for WebSocket handshakes."""
+class WebSocketApiKeyRateLimitMiddleware:
+    """ASGI: rate-limit websocket handshakes per API key."""
 
     def __init__(self, inner):
         self.inner = inner
@@ -93,15 +73,15 @@ class WebSocketResolutionRateLimitMiddleware:
     async def __call__(self, scope, receive, send):
         if scope["type"] != "websocket":
             return await self.inner(scope, receive, send)
-        headers = dict(scope.get("headers", []))
-        raw = headers.get(b"host", b"").decode("latin1")
-        host = _normalize_host(raw)
-        platform_hosts = {h.lower() for h in getattr(settings, "PLATFORM_HOSTS", [])}
-        if host in platform_hosts:
-            return await self.inner(scope, receive, send)
-        client = scope.get("client")
-        ip = client[0] if client else "unknown"
-        allowed = await sync_to_async(tenant_resolution_rate_check)(ip, host)
+        ok = await resolve_scope_api_key(scope)
+        if not ok:
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        api_key_public_id = str(scope.get("api_key_public_id") or "")
+        if not api_key_public_id:
+            await send({"type": "websocket.close", "code": 1008})
+            return
+        allowed = await sync_to_async(api_key_rate_check)(api_key_public_id)
         if not allowed:
             await send({"type": "websocket.close", "code": 1008})
             return

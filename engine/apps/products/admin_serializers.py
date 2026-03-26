@@ -64,7 +64,7 @@ def ensure_unique_variant_sku(*, product: Product, base_sku: str, exclude_id: in
 class AdminProductImageSerializer(serializers.ModelSerializer):
     product = serializers.SlugRelatedField(
         slug_field='public_id',
-        queryset=Product.objects.all(),
+        queryset=Product.objects.none(),
     )
 
     class Meta:
@@ -87,6 +87,14 @@ class AdminProductImageSerializer(serializers.ModelSerializer):
                 }
             )
         return attrs
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Product.objects.none()
+        store_id = (self.context or {}).get("store_id")
+        if store_id is not None:
+            qs = Product.objects.filter(store_id=store_id)
+        self.fields["product"].queryset = qs
 
 
 class AdminProductListSerializer(serializers.ModelSerializer):
@@ -157,7 +165,7 @@ class AdminProductSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = Category.objects.all()
+        qs = Category.objects.none()
         store_id = (self.context or {}).get('store_id')
         if store_id is not None:
             qs = qs.filter(store_id=store_id)

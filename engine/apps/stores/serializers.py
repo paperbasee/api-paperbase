@@ -4,7 +4,7 @@ from rest_framework import serializers
 from engine.apps.billing.feature_gate import has_feature
 
 from .models import Store, StoreSettings, StoreMembership
-from .services import ORDER_EMAIL_NOTIFICATIONS_FEATURE, store_primary_domain_host
+from .services import ORDER_EMAIL_NOTIFICATIONS_FEATURE
 
 User = get_user_model()
 
@@ -18,6 +18,7 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
             "extra_field_schema",
             "email_notify_owner_on_order_received",
             "email_customer_on_order_confirmed",
+            "public_api_enabled",
         ]
 
     def to_representation(self, instance):
@@ -64,7 +65,6 @@ class StoreSettingsSerializer(serializers.ModelSerializer):
 
 class StoreSerializer(serializers.ModelSerializer):
     settings = StoreSettingsSerializer(read_only=True)
-    domain = serializers.SerializerMethodField()
 
     class Meta:
         model = Store
@@ -72,7 +72,6 @@ class StoreSerializer(serializers.ModelSerializer):
             "public_id",
             "name",
             "store_type",
-            "domain",
             "owner_name",
             "owner_email",
             "is_active",
@@ -81,10 +80,7 @@ class StoreSerializer(serializers.ModelSerializer):
             "updated_at",
             "settings",
         ]
-        read_only_fields = ["public_id", "domain", "created_at", "updated_at", "settings"]
-
-    def get_domain(self, obj):
-        return store_primary_domain_host(obj)
+        read_only_fields = ["public_id", "created_at", "updated_at", "settings"]
 
 
 class StoreMembershipSerializer(serializers.ModelSerializer):

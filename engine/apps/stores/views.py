@@ -3,12 +3,13 @@ from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils import timezone
 
-from config.permissions import IsPlatformRequest, IsStoreAdmin, IsStoreStaff
+from config.permissions import IsStoreAdmin, IsStoreStaff
 from engine.apps.billing.feature_gate import get_feature_config, get_limit
 from engine.core.tenancy import get_active_store
 
-from .models import Store, StoreDeletionJob, StoreMembership, StoreSettings
+from .models import Store, StoreApiKey, StoreDeletionJob, StoreMembership, StoreSettings
 from .serializers import (
     DeleteStoreRequestSerializer,
     StoreSerializer,
@@ -16,8 +17,11 @@ from .serializers import (
     StoreSettingsSerializer,
 )
 from .services import (
+    create_store_api_key,
+    get_active_store_api_key,
     get_cached_store_settings,
     invalidate_store_settings_cache,
+    revoke_store_api_key,
     set_cached_store_settings,
 )
 
@@ -28,8 +32,8 @@ class StoreViewSet(viewsets.ModelViewSet):
     """
     Platform onboarding + store details.
 
-    - On PLATFORM_HOSTS: list/create stores for the authenticated user.
-    - On TENANT hosts (or when active store is set): retrieve/update the current store.
+    - list/create stores for the authenticated user.
+    - retrieve/update the current active store.
     """
 
     serializer_class = StoreSerializer
@@ -39,7 +43,7 @@ class StoreViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in {"list", "create"}:
-            return [permissions.IsAuthenticated(), IsPlatformRequest()]
+            return [permissions.IsAuthenticated()]
         return [permissions.IsAuthenticated(), IsStoreAdmin()]
 
     def get_queryset(self):
@@ -47,7 +51,7 @@ class StoreViewSet(viewsets.ModelViewSet):
             return Store.objects.filter(
                 memberships__user=self.request.user,
                 memberships__is_active=True,
-            ).distinct()
+            ).distinct().order_by("-created_at", "id")
 
         ctx = get_active_store(self.request)
         if not ctx.store:
@@ -106,7 +110,6 @@ class StoreViewSet(viewsets.ModelViewSet):
 
         store = Store.objects.create(
             name=name,
-            domain=None,
             owner_name=owner_name[:255],
             owner_email=owner_email[:254],
             store_type=store_type_raw,
@@ -126,13 +129,16 @@ class StoreViewSet(viewsets.ModelViewSet):
             role=StoreMembership.Role.OWNER,
             is_active=True,
         )
+        _, bootstrap_api_key = create_store_api_key(store, name="Bootstrap")
 
         # Update User's first_name and last_name for auth/profile
         request.user.first_name = owner_first_name[:150]
         request.user.last_name = owner_last_name[:150]
         request.user.save(update_fields=["first_name", "last_name"])
 
-        return Response(StoreSerializer(store).data, status=status.HTTP_201_CREATED)
+        payload = StoreSerializer(store).data
+        payload["api_key"] = bootstrap_api_key
+        return Response(payload, status=status.HTTP_201_CREATED)
 
 
 class StoreMembershipViewSet(viewsets.ModelViewSet):
@@ -180,6 +186,8 @@ class StoreSettingsViewSet(
         # After store deactivation, `IsStoreStaff` would deny access because the
         # membership is set to `is_active=False`. Deletion endpoints must remain
         # reachable so the frontend can poll progress and complete redirect.
+        if self.action == "api_key":
+            return [permissions.IsAuthenticated(), IsStoreAdmin()]
         if self.action in {"delete_store", "delete_status"}:
             return [permissions.IsAuthenticated()]
         return [permissions.IsAuthenticated(), IsStoreStaff()]
@@ -332,4 +340,135 @@ class StoreSettingsViewSet(
             },
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=False, methods=["get", "post"], url_path="api-key")
+    def api_key(self, request):
+        """
+        GET: key metadata (never plaintext).
+        POST: rotate key and return plaintext once.
+        """
+        ctx = get_active_store(request)
+        if not ctx.store:
+            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
+
+        if request.method == "GET":
+            row = get_active_store_api_key(ctx.store)
+            if row is None:
+                return Response({"has_api_key": False}, status=status.HTTP_200_OK)
+            return Response(
+                {
+                    "has_api_key": True,
+                    "public_id": row.public_id,
+                    "key_prefix": row.key_prefix,
+                    "name": row.label,
+                    "created_at": row.created_at,
+                    "updated_at": row.updated_at,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        name = (request.data.get("name") or "").strip()
+        StoreApiKey.objects.filter(
+            store=ctx.store,
+            revoked_at__isnull=True,
+            is_active=True,
+        ).update(revoked_at=timezone.now(), is_active=False, updated_at=timezone.now())
+        row, raw_api_key = create_store_api_key(ctx.store, name=name)
+        return Response(
+            {
+                "public_id": row.public_id,
+                "key_prefix": row.key_prefix,
+                "name": row.label,
+                "api_key": raw_api_key,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class StoreAPIKeyManagementViewSet(viewsets.ViewSet):
+    """
+    Settings > Network API key management.
+    """
+
+    permission_classes = [permissions.IsAuthenticated, IsStoreAdmin]
+    lookup_field = "public_id"
+
+    def _active_store(self, request):
+        return get_active_store(request).store
+
+    def list(self, request):
+        store = self._active_store(request)
+        if not store:
+            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
+        rows = list(
+            StoreApiKey.objects.filter(store=store)
+            .order_by("-created_at")
+            .values("public_id", "label", "key_prefix", "created_at", "revoked_at")
+        )
+        payload = [
+            {
+                "public_id": r["public_id"],
+                "name": r["label"],
+                "key_prefix": r["key_prefix"],
+                "created_at": r["created_at"],
+                "revoked_at": r["revoked_at"],
+            }
+            for r in rows
+        ]
+        return Response(payload, status=status.HTTP_200_OK)
+
+    def create(self, request):
+        store = self._active_store(request)
+        if not store:
+            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
+        name = (request.data.get("name") or "").strip()
+        row, raw_api_key = create_store_api_key(store, name=name)
+        return Response(
+            {
+                "public_id": row.public_id,
+                "name": row.label,
+                "key_prefix": row.key_prefix,
+                "created_at": row.created_at,
+                "api_key": raw_api_key,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=["post"], url_path="regenerate")
+    def regenerate(self, request, public_id=None):
+        store = self._active_store(request)
+        if not store:
+            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
+        row = StoreApiKey.objects.filter(
+            store=store,
+            public_id=public_id,
+        ).first()
+        if row is None:
+            return Response({"detail": "API key not found."}, status=status.HTTP_404_NOT_FOUND)
+        revoke_store_api_key(row)
+        name = (request.data.get("name") or row.label or "").strip()
+        new_row, raw_api_key = create_store_api_key(store, name=name)
+        return Response(
+            {
+                "public_id": new_row.public_id,
+                "name": new_row.label,
+                "key_prefix": new_row.key_prefix,
+                "created_at": new_row.created_at,
+                "api_key": raw_api_key,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    def destroy(self, request, public_id=None):
+        store = self._active_store(request)
+        if not store:
+            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
+        row = StoreApiKey.objects.filter(
+            store=store,
+            public_id=public_id,
+        ).first()
+        if row is None:
+            return Response({"detail": "API key not found."}, status=status.HTTP_404_NOT_FOUND)
+        revoke_store_api_key(row)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 

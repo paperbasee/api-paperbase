@@ -207,6 +207,13 @@ class AdminProductImageViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
             return qs.none()
         return qs.filter(product__store=ctx.store)
 
+    def get_serializer_context(self):
+        ctx = get_active_store(self.request)
+        return {
+            **super().get_serializer_context(),
+            "store_id": ctx.store.pk if ctx.store else None,
+        }
+
     def perform_create(self, serializer):
         ctx = get_active_store(self.request)
         store = ctx.store

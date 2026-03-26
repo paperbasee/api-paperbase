@@ -30,21 +30,6 @@ def env_list(name: str, default: list[str] | None = None) -> list[str]:
 # Used to make test runs deterministic (e.g. avoid DRF throttling interfering with auth tests).
 TESTING = any(arg == "test" or arg.startswith("test") for arg in sys.argv)
 
-# Multi-tenant platform host routing
-PLATFORM_ROOT_DOMAIN = os.getenv("PLATFORM_ROOT_DOMAIN", "akkho.com").strip().lower()
-_default_platform_hosts = [
-    "localhost",
-    "127.0.0.1",
-    f"api.{PLATFORM_ROOT_DOMAIN}",
-]
-PLATFORM_HOSTS = sorted(
-    {
-        h.strip().lower()
-        for h in [*_default_platform_hosts, *env_list("PLATFORM_HOSTS")]
-        if h and h.strip()
-    }
-)
-
 # Applications
 INSTALLED_APPS = [
     "daphne",
@@ -85,20 +70,12 @@ ASGI_APPLICATION = "config.asgi.application"
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
-# Cache and tenant resolution shared constants
-TENANT_RESOLUTION_CACHE_ALIAS = "tenant_resolution"
-DOMAIN_RESOLUTION_CACHE_TTL = int(os.getenv("DOMAIN_RESOLUTION_CACHE_TTL", "420"))
-TENANT_RESOLUTION_RATE_LIMIT_IP = int(os.getenv("TENANT_RESOLUTION_RATE_LIMIT_IP", "120"))
-TENANT_RESOLUTION_RATE_LIMIT_DOMAIN = int(os.getenv("TENANT_RESOLUTION_RATE_LIMIT_DOMAIN", "60"))
-TENANT_RATE_LIMIT_EXEMPT_PATH_PREFIXES = (
-    "/health",
-    "/api/v1/auth/",
-    "/static/",
-    "/media/",
-)
+# Tenant API auth
 TENANT_API_PREFIX = "/api/v1/"
-TENANT_API_EXEMPT_PREFIXES = (
-    "/api/v1/auth/",
+TENANT_API_KEY_ENFORCE = env_bool("TENANT_API_KEY_ENFORCE", not TESTING)
+STORE_API_KEY_SECRET = os.getenv("STORE_API_KEY_SECRET", "").strip()
+STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS = int(
+    os.getenv("STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS", "60")
 )
 
 # ---------------------------------------------------------------------------
@@ -131,9 +108,8 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
-    "engine.core.rate_limit.TenantResolutionRateLimitMiddleware",
-    "engine.core.tenancy.TenantResolutionMiddleware",
-    "engine.core.tenancy.TenantApiGuardMiddleware",
+    "engine.core.store_api_key_auth.TenantApiKeyMiddleware",
+    "engine.core.rate_limit.ApiKeyRateLimitMiddleware",
 ]
 
 # Templates
@@ -171,7 +147,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "engine.core.authentication.JWTAuthenticationAllowAPIKey",
         "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [

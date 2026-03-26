@@ -1,8 +1,8 @@
 """Store-scoped helpers used by billing, emails, and serializers."""
 
+import hashlib
+import hmac
 import secrets
-import string
-from urllib.parse import urlparse
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -12,85 +12,109 @@ from django.utils import timezone
 from engine.apps.billing.feature_gate import has_feature
 from engine.core import cache_service
 
-from .models import Domain, Store, StoreMembership, StoreSettings
+from .models import Store, StoreApiKey, StoreMembership, StoreSettings
 
 User = get_user_model()
 
 ORDER_EMAIL_NOTIFICATIONS_FEATURE = "order_email_notifications"
 
-_LABEL_ALPHABET = string.ascii_lowercase + string.digits
+def _api_key_secret() -> bytes:
+    # Prefer a dedicated secret for API key hashing; fall back to SECRET_KEY.
+    secret = (
+        getattr(settings, "STORE_API_KEY_SECRET", "") or getattr(settings, "SECRET_KEY", "")
+    ).strip()
+    return secret.encode("utf-8")
 
 
-def normalize_domain_host(value: str) -> str:
-    """Lowercase hostname without port or scheme (for storage and lookups)."""
-    raw = (value or "").strip().lower()
-    if not raw:
-        return ""
-    if "://" in raw:
-        parsed = urlparse(raw)
-        raw = parsed.netloc or parsed.path.split("/")[0]
-    return raw.split(":", 1)[0].strip().rstrip(".")
+def _hash_store_api_key(raw_key: str) -> str:
+    material = (raw_key or "").strip().encode("utf-8")
+    return hmac.new(_api_key_secret(), material, hashlib.sha256).hexdigest()
 
 
-def store_primary_domain_host(store: Store) -> str | None:
-    """Primary verified hostname for emails and legacy `Store.domain`-style display."""
-    d = (
-        Domain.objects.filter(store=store, is_primary=True, is_verified=True)
-        .values_list("domain", flat=True)
+def generate_store_api_key() -> str:
+    """
+    Create a high-entropy plaintext API key for one-time display.
+    """
+    return f"ak_live_{secrets.token_urlsafe(24)}"
+
+
+def create_store_api_key(store: Store, *, name: str = "") -> tuple[StoreApiKey, str]:
+    """
+    Issue a new API key for the store.
+    Returns (row, plaintext_key). The plaintext must not be persisted.
+    """
+    raw = generate_store_api_key()
+    key_hash = _hash_store_api_key(raw)
+    key_name = (name or "").strip()[:80] or "Default key"
+    with transaction.atomic():
+        row = StoreApiKey.objects.create(
+            store=store,
+            key_hash=key_hash,
+            key_prefix="ak_live",
+            key_last4=raw[-4:],
+            label=key_name,
+            is_active=True,
+        )
+    return row, raw
+
+
+def revoke_store_api_key(key_row: StoreApiKey) -> None:
+    if key_row.revoked_at is not None:
+        return
+    key_row.revoked_at = timezone.now()
+    key_row.is_active = False
+    key_row.save(update_fields=["revoked_at", "is_active", "updated_at"])
+
+
+def get_active_store_api_key(store: Store, *, public_id: str | None = None) -> StoreApiKey | None:
+    qs = StoreApiKey.objects.filter(store=store, revoked_at__isnull=True, is_active=True)
+    if public_id:
+        qs = qs.filter(public_id=public_id)
+    return (
+        qs
+        .order_by("-created_at")
         .first()
     )
-    if d:
-        return d
-    d = (
-        Domain.objects.filter(store=store, is_verified=True)
-        .order_by("is_custom", "created_at")
-        .values_list("domain", flat=True)
-        .first()
-    )
-    return d
 
 
-def provision_generated_domain(store: Store) -> Domain:
-    """
-    Create the single generated subdomain for a store: <random 8–12>.PLATFORM_ROOT_DOMAIN.
-    Caller must ensure no generated domain exists yet for this store.
-    """
-    root = getattr(settings, "PLATFORM_ROOT_DOMAIN", "akkho.com").lower().strip(".")
-    while True:
-        n = secrets.randbelow(5) + 8
-        label = "".join(secrets.choice(_LABEL_ALPHABET) for _ in range(n))
-        host = f"{label}.{root}"
-        with transaction.atomic():
-            if Domain.objects.filter(domain=host).exists():
-                continue
-            has_primary = Domain.objects.filter(store=store, is_primary=True).exists()
-            return Domain.objects.create(
-                store=store,
-                domain=host,
-                is_custom=False,
-                is_verified=True,
-                is_primary=not has_primary,
-                verification_token=None,
-            )
-
-
-def ensure_generated_store_domain(store: Store) -> Domain | None:
-    """Idempotent: provision generated domain when missing (e.g. new Store)."""
-    if Domain.objects.filter(store=store, is_custom=False).exists():
+def resolve_active_store_api_key(raw_key: str) -> StoreApiKey | None:
+    if not raw_key:
         return None
-    return provision_generated_domain(store)
-
-
-def repromote_generated_domain_primary(store: Store) -> None:
-    """After removing a custom domain, ensure the generated hostname is primary again."""
-    from engine.core.domain_resolution_cache import invalidate_domain_hosts
-
-    hosts = list(Domain.objects.filter(store=store).values_list("domain", flat=True))
-    Domain.objects.filter(store=store, is_custom=False).update(
-        is_primary=True,
-        updated_at=timezone.now(),
+    digest = _hash_store_api_key(raw_key)
+    return (
+        StoreApiKey.objects.select_related("store")
+        .filter(
+            key_hash=digest,
+            revoked_at__isnull=True,
+            is_active=True,
+            store__is_active=True,
+        )
+        .first()
     )
-    invalidate_domain_hosts(hosts)
+
+
+def touch_store_api_key_last_used(key_row: StoreApiKey) -> None:
+    """
+    Best-effort usage timestamp update for monitoring.
+    """
+    interval_seconds = int(
+        getattr(settings, "STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS", 60)
+    )
+    now = timezone.now()
+    last_used_at = getattr(key_row, "last_used_at", None)
+    if (
+        last_used_at is not None
+        and interval_seconds > 0
+        and (now - last_used_at).total_seconds() < interval_seconds
+    ):
+        return
+    StoreApiKey.objects.filter(pk=key_row.pk).update(last_used_at=now)
+
+
+def is_public_api_enabled_for_store(store: Store) -> bool:
+    if not store or not store.is_active:
+        return False
+    return StoreSettings.objects.filter(store=store, public_api_enabled=True).exists()
 
 
 def get_store_owner_user(store: Store) -> User | None:

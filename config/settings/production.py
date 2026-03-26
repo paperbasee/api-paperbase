@@ -18,6 +18,10 @@ if DEBUG:
 
 SECRET_KEY = _require_env("SECRET_KEY")
 SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY  # noqa: F405
+STORE_API_KEY_SECRET = _require_env("STORE_API_KEY_SECRET")  # noqa: F405
+
+if not TENANT_API_KEY_ENFORCE:  # noqa: F405
+    raise ImproperlyConfigured("TENANT_API_KEY_ENFORCE must be True in production.")
 
 ALLOWED_HOSTS = env_list("ALLOWED_HOSTS")  # noqa: F405
 if not ALLOWED_HOSTS:
@@ -102,10 +106,6 @@ CHANNEL_LAYERS = {
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": _redis_url,
-    },
-    TENANT_RESOLUTION_CACHE_ALIAS: {  # noqa: F405
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
         "LOCATION": _redis_url,
     },
