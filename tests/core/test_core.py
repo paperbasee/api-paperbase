@@ -755,22 +755,45 @@ class EmailVerificationTests(TestCase):
 
     def test_resend_verification_for_unverified_user(self):
         self.client.credentials()
-        resp = self.client.post("/api/v1/auth/email/resend-verification/", format="json")
-        self.assertEqual(resp.status_code, 401)
+        resp = self.client.post(
+            "/api/v1/auth/email/resend-verification/",
+            {"email": "verify@example.com"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp.data.get("message"),
+            "If the email exists, verification link has been sent.",
+        )
 
     def test_resend_verification_rejected_if_already_verified(self):
         self.user.is_verified = True
         self.user.is_active = True
         self.user.save(update_fields=["is_verified", "is_active", "updated_at"])
-        auth_resp = self.client.post(
-            "/api/v1/auth/token/",
-            {"email": "verify@example.com", "password": "pass1234"},
+        self.client.credentials()
+        resp = self.client.post(
+            "/api/v1/auth/email/resend-verification/",
+            {"email": "verify@example.com"},
             format="json",
         )
-        self.assertEqual(auth_resp.status_code, 200)
-        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {auth_resp.data['access']}")
-        resp = self.client.post("/api/v1/auth/email/resend-verification/", format="json")
-        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp.data.get("message"),
+            "If the email exists, verification link has been sent.",
+        )
+
+    def test_resend_verification_neutral_response_for_unknown_email(self):
+        self.client.credentials()
+        resp = self.client.post(
+            "/api/v1/auth/email/resend-verification/",
+            {"email": "unknown@example.com"},
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            resp.data.get("message"),
+            "If the email exists, verification link has been sent.",
+        )
 
 
 # ---------------------------------------------------------------------------

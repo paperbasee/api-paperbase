@@ -13,6 +13,7 @@ from engine.apps.emails.constants import EMAIL_VERIFICATION, PASSWORD_RESET
 from engine.apps.emails.tasks import send_email_task
 from engine.apps.stores.models import StoreMembership
 from engine.apps.stores.services import store_primary_domain_host
+from .services import send_verification_email
 from .two_factor_service import disable_2fa
 
 User = get_user_model()
@@ -52,19 +53,7 @@ def _user_eligible_for_public_password_reset(email: str):
 
 
 def _send_verification_email(user, request=None):
-    uid = _uid_for(user)
-    token = default_token_generator.make_token(user)
-    frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-    link = f"{frontend_url}/auth/verify-email?uid={uid}&token={token}"
-    send_email_task.delay(
-        EMAIL_VERIFICATION,
-        user.email,
-        {
-            "user_name": user.get_short_name() or user.email,
-            "user_email": user.email,
-            "verification_link": link,
-        },
-    )
+    send_verification_email(user)
 
 
 def _send_password_reset_email(user):
@@ -339,6 +328,13 @@ class EmailVerificationSerializer(serializers.Serializer):
         user.is_active = True
         user.save(update_fields=["is_verified", "is_active", "updated_at"])
         return user
+
+
+class ResendVerificationSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        return (value or "").strip().lower()
 
 
 class OTPCodeSerializer(serializers.Serializer):

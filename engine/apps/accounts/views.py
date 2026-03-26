@@ -33,11 +33,15 @@ from .serializers import (
     PasswordResetSerializer,
     PasswordResetConfirmSerializer,
     EmailVerificationSerializer,
+    ResendVerificationSerializer,
     OTPCodeSerializer,
     TwoFactorChallengeVerifySerializer,
     TwoFactorDisableSerializer,
     TwoFactorRecoveryVerifySerializer,
-    _send_verification_email,
+)
+from .services import (
+    RESEND_VERIFICATION_NEUTRAL_MESSAGE,
+    resend_verification_email_for_email,
 )
 from .throttles import (
     LoginRateThrottle,
@@ -539,21 +543,18 @@ class EmailVerifyView(views.APIView):
 class ResendVerificationView(views.APIView):
     """
     POST /auth/email/resend-verification/
-    Re-sends the verification email to the authenticated user.
-    Returns 400 if the account is already verified.
+    Re-sends the verification email using email input.
+    Always returns a neutral success response to prevent user enumeration.
     """
 
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        user = request.user
-        if user.is_verified:
-            return Response(
-                {"detail": "Email is already verified."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        _send_verification_email(user, request)
+        serializer = ResendVerificationSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        resend_verification_email_for_email(serializer.validated_data["email"])
         return Response(
-            {"detail": "Verification email sent."},
+            {"message": RESEND_VERIFICATION_NEUTRAL_MESSAGE},
             status=status.HTTP_200_OK,
         )
