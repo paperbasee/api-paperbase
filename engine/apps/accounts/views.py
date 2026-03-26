@@ -463,9 +463,13 @@ class PasswordChangeView(views.APIView):
         )
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        serializer.save()
+        user = serializer.save()
+        logout_all_devices = serializer.validated_data.get("logout_all_devices", False)
+        response_payload = {"detail": "Password changed successfully."}
+        if logout_all_devices:
+            response_payload.update(_issue_tokens(user))
         return Response(
-            {"detail": "Password changed successfully."},
+            response_payload,
             status=status.HTTP_200_OK,
         )
 

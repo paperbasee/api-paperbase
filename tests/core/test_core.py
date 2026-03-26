@@ -6,7 +6,9 @@ from django.contrib.auth.tokens import default_token_generator
 from django.test import TestCase, RequestFactory
 from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
+from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken
 
 from engine.apps.stores.models import Domain, Store, StoreMembership
 from engine.core.tenancy import resolve_store_from_host, get_active_store
@@ -500,6 +502,7 @@ class PasswordManagementTests(TestCase):
         )
         self.assertEqual(resp.status_code, 200)
         self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {resp.data['access']}")
+        return resp
 
     def test_password_reset_request_always_200(self):
         """Should return 200 even for non-existent emails (prevent enumeration)."""
@@ -622,6 +625,32 @@ class PasswordManagementTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("NewPass5678!"))
+        self.assertEqual(self.user.session_version, 0)
+
+    def test_password_reset_confirm_logout_all_devices_increments_session_version(self):
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        self.client.post(
+            "/api/v1/auth/token/",
+            {"email": "pw_user@example.com", "password": "OldPass1234!"},
+            format="json",
+        )
+        resp = self.client.post(
+            "/api/v1/auth/password/reset/confirm/",
+            {
+                "uid": uid,
+                "token": token,
+                "new_password": "NewPass5678!",
+                "new_password_confirm": "NewPass5678!",
+                "logout_all_devices": True,
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass5678!"))
+        self.assertEqual(self.user.session_version, 1)
+        self.assertGreaterEqual(BlacklistedToken.objects.count(), 1)
 
     def test_password_reset_confirm_rejects_invalid_token(self):
         uid = urlsafe_base64_encode(force_bytes(self.user.pk))
@@ -664,6 +693,33 @@ class PasswordManagementTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("NewPass5678!"))
+        self.assertEqual(self.user.session_version, 0)
+
+    def test_password_change_logout_all_devices_reissues_tokens(self):
+        login_resp = self._authenticate()
+        old_refresh = login_resp.data["refresh"]
+        resp = self.client.post(
+            "/api/v1/auth/password/change/",
+            {
+                "old_password": "OldPass1234!",
+                "new_password": "NewPass5678!",
+                "new_password_confirm": "NewPass5678!",
+                "logout_all_devices": True,
+            },
+            format="json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("access", resp.data)
+        self.assertIn("refresh", resp.data)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.session_version, 1)
+
+        refresh_resp = self.client.post(
+            "/api/v1/auth/token/refresh/",
+            {"refresh": old_refresh},
+            format="json",
+        )
+        self.assertEqual(refresh_resp.status_code, status.HTTP_401_UNAUTHORIZED)
 
 
 # ---------------------------------------------------------------------------

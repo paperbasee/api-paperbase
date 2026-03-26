@@ -1,4 +1,5 @@
 import base64
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -13,7 +14,7 @@ from engine.apps.emails.constants import EMAIL_VERIFICATION, PASSWORD_RESET
 from engine.apps.emails.tasks import send_email_task
 from engine.apps.stores.models import StoreMembership
 from engine.apps.stores.services import store_primary_domain_host
-from .services import send_verification_email
+from .services import change_user_password, reset_user_password, send_verification_email
 from .two_factor_service import disable_2fa
 
 User = get_user_model()
@@ -56,11 +57,18 @@ def _send_verification_email(user, request=None):
     send_verification_email(user)
 
 
-def _send_password_reset_email(user):
+def _send_password_reset_email(user, logout_all_devices: bool = False):
     uid = _uid_for(user)
     token = default_token_generator.make_token(user)
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
-    link = f"{frontend_url}/auth/password-reset/confirm?uid={uid}&token={token}"
+    query = urlencode(
+        {
+            "uid": uid,
+            "token": token,
+            "logout_all_devices": "1" if logout_all_devices else "0",
+        }
+    )
+    link = f"{frontend_url}/auth/password-reset/confirm?{query}"
     send_email_task.delay(
         PASSWORD_RESET,
         user.email,
@@ -217,6 +225,7 @@ class PasswordChangeSerializer(serializers.Serializer):
     new_password_confirm = serializers.CharField(
         required=True, write_only=True, style={"input_type": "password"}
     )
+    logout_all_devices = serializers.BooleanField(required=False, default=False)
 
     def validate_old_password(self, value):
         user = self.context["request"].user
@@ -237,8 +246,11 @@ class PasswordChangeSerializer(serializers.Serializer):
 
     def save(self, **kwargs):
         user = self.context["request"].user
-        user.set_password(self.validated_data["new_password"])
-        user.save(update_fields=["password", "updated_at"])
+        change_user_password(
+            user=user,
+            new_password=self.validated_data["new_password"],
+            logout_all_devices=self.validated_data.get("logout_all_devices", False),
+        )
         return user
 
 
@@ -250,12 +262,16 @@ class PasswordResetSerializer(serializers.Serializer):
     """Step 1: accepts an email and sends a reset link. Always returns 200 to prevent enumeration."""
 
     email = serializers.EmailField(required=True)
+    logout_all_devices = serializers.BooleanField(required=False, default=False)
 
     def save(self, **kwargs):
         email = self.validated_data["email"].strip().lower()
         user = _user_eligible_for_public_password_reset(email)
         if user is not None:
-            _send_password_reset_email(user)
+            _send_password_reset_email(
+                user,
+                logout_all_devices=self.validated_data.get("logout_all_devices", False),
+            )
 
 
 class PasswordResetConfirmSerializer(serializers.Serializer):
@@ -269,6 +285,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
     new_password_confirm = serializers.CharField(
         required=True, write_only=True, style={"input_type": "password"}
     )
+    logout_all_devices = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
         if attrs["new_password"] != attrs["new_password_confirm"]:
@@ -293,8 +310,11 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
     def save(self, **kwargs):
         user = self.validated_data["_user"]
-        user.set_password(self.validated_data["new_password"])
-        user.save(update_fields=["password", "updated_at"])
+        reset_user_password(
+            user=user,
+            new_password=self.validated_data["new_password"],
+            logout_all_devices=self.validated_data.get("logout_all_devices", False),
+        )
         return user
 
 
