@@ -26,6 +26,8 @@ _PREFIXES: dict[str, str] = {
     "cartitem": "cit",
     "wishlist": "wsh",
     "coupon": "cpn",
+    "couponusage": "cpu",
+    "bulkdiscount": "bdk",
     "zone": "szn",
     "method": "smt",
     "rate": "srt",

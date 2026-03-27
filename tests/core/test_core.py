@@ -23,11 +23,13 @@ from engine.apps.orders.models import Order, OrderItem
 from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
 from engine.apps.customers.models import Customer, CustomerAddress
-from engine.apps.coupons.models import Coupon
+from engine.apps.coupons.models import BulkDiscount, Coupon, CouponUsage
+from engine.apps.coupons.services import consume_coupon_usage, validate_coupon_for_subtotal
 from engine.apps.cart.models import Cart, CartItem
 from engine.apps.wishlist.models import WishlistItem
 from engine.apps.reviews.models import Review
 from engine.apps.notifications.models import StorefrontCTA
+from engine.apps.orders.services import transition_order_status
 
 User = get_user_model()
 
@@ -320,6 +322,8 @@ class PublicIdGenerationTests(TestCase):
             ("cart", "crt_"),
             ("cartitem", "cit_"),
             ("coupon", "cpn_"),
+            ("couponusage", "cpu_"),
+            ("bulkdiscount", "bdk_"),
         ]
         for kind, prefix in expected:
             pid = generate_public_id(kind)

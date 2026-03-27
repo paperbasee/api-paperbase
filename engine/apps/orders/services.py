@@ -5,13 +5,13 @@ from django.db.models import F
 from rest_framework.exceptions import ValidationError
 
 from engine.apps.customers.models import Customer
-from engine.apps.coupons.services import validate_coupon_for_subtotal
+from engine.apps.coupons.services import reverse_coupon_usage_for_order
 from django.db import IntegrityError
 
 from engine.apps.orders.models import Order, OrderStatusHistory, StockRestoreLog
+from engine.apps.orders.pricing import PricingEngine
 from engine.apps.orders.stock import adjust_stock
 from engine.apps.products.models import Product, ProductVariant
-from engine.apps.shipping.service import quote_shipping
 from engine.apps.stores.models import Store
 
 
@@ -115,37 +115,34 @@ def recalculate_order_totals(order: Order) -> Order:
     """
     Recompute totals from persisted order items to avoid partial updates.
     """
-    subtotal = Decimal("0.00")
     items = order.items.all()
+    pricing_lines: list[dict] = []
     for item in items:
-        subtotal += Decimal(str(item.price)) * Decimal(item.quantity)
-
-    discount = Decimal("0.00")
-    coupon = None
-    coupon_code = (order.coupon_code or "").strip()
-    if coupon_code:
-        quote_data = validate_coupon_for_subtotal(
-            store=order.store,
-            code=coupon_code,
-            subtotal=subtotal,
+        if not item.product:
+            continue
+        pricing_lines.append(
+            {
+                "product": item.product,
+                "quantity": int(item.quantity),
+                "unit_price": Decimal(str(item.price)),
+            }
         )
-        discount = quote_data.discount_amount
-        coupon = quote_data.coupon
-
-    quote = quote_shipping(
+    breakdown = PricingEngine.compute(
         store=order.store,
-        order_subtotal=subtotal - discount,
+        lines=pricing_lines,
+        coupon_code=order.coupon_code,
+        user=order.user,
         shipping_zone_id=order.shipping_zone_id,
         shipping_method_id=order.shipping_method_id,
     )
-    order.subtotal = subtotal
-    order.shipping_cost = quote.shipping_cost
-    order.shipping_zone = quote.zone
-    order.shipping_method = quote.method
-    order.shipping_rate = quote.rate
-    order.discount_amount = discount
-    order.coupon = coupon
-    order.total = subtotal - discount + quote.shipping_cost
+    order.subtotal = breakdown.base_subtotal
+    order.shipping_cost = breakdown.shipping_cost
+    order.shipping_zone = breakdown.shipping_zone
+    order.shipping_method = breakdown.shipping_method
+    order.shipping_rate = breakdown.shipping_rate
+    order.discount_amount = breakdown.bulk_discount_total + breakdown.coupon_discount
+    order.coupon = breakdown.coupon
+    order.total = breakdown.final_total
     order.save(
         update_fields=[
             "subtotal",
@@ -264,6 +261,7 @@ def transition_order_status(
                 if restore_log.quantity != int(item.quantity):
                     restore_log.quantity = int(item.quantity)
                     restore_log.save(update_fields=["quantity"])
+            reverse_coupon_usage_for_order(order=locked, reason=to_status)
 
         locked.status = to_status
         locked.save(update_fields=["status", "updated_at"])

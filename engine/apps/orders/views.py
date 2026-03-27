@@ -1,5 +1,3 @@
-from decimal import Decimal
-
 from django.db import transaction
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
@@ -19,13 +17,13 @@ from engine.core.store_session import (
 )
 
 from .models import Order, OrderItem
+from .pricing import PricingEngine
 from .serializers import OrderCreateSerializer, OrderSerializer, DirectOrderCreateSerializer
 from .services import resolve_and_attach_customer
 from .utils import get_next_order_number
 from .stock import adjust_stock
 from .throttles import DirectOrderRateThrottle
-from engine.apps.shipping.service import quote_shipping
-from engine.apps.coupons.services import consume_coupon_usage, validate_coupon_for_subtotal
+from engine.apps.coupons.services import consume_coupon_usage
 from engine.apps.emails.triggers import notify_store_new_order
 from engine.core.realtime import emit_store_event
 
@@ -163,7 +161,6 @@ class OrderCreateView(CreateAPIView):
             )
 
         # Create order and reduce stock
-        subtotal = Decimal('0.00')
         if request_store.id != store.id:
             return Response(
                 {"detail": "Store mismatch for this checkout request."},
@@ -221,34 +218,32 @@ class OrderCreateView(CreateAPIView):
                     {"detail": "Stock validation failed.", "errors": e.message_dict if hasattr(e, "message_dict") else str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            subtotal += price * ci.quantity
 
-        discount_amount = Decimal("0.00")
-        applied_coupon = None
-        coupon_code = (order.coupon_code or "").strip()
-        if coupon_code:
-            coupon_quote = validate_coupon_for_subtotal(
-                store=order.store,
-                code=coupon_code,
-                subtotal=subtotal,
-            )
-            applied_coupon = coupon_quote.coupon
-            discount_amount = coupon_quote.discount_amount
-
-        quote = quote_shipping(
+        pricing_lines = [
+            {
+                "product": oi.product,
+                "quantity": int(oi.quantity),
+                "unit_price": Decimal(str(oi.price)),
+            }
+            for oi in order.items.select_related("product").all()
+            if oi.product is not None
+        ]
+        breakdown = PricingEngine.compute(
             store=order.store,
-            order_subtotal=subtotal - discount_amount,
+            lines=pricing_lines,
+            coupon_code=order.coupon_code,
+            user=request.user if request.user.is_authenticated else None,
             shipping_zone_id=order.shipping_zone_id,
             shipping_method_id=order.shipping_method_id,
         )
-        order.subtotal = subtotal
-        order.discount_amount = discount_amount
-        order.coupon = applied_coupon
-        order.shipping_cost = quote.shipping_cost
-        order.shipping_zone = quote.zone
-        order.shipping_method = quote.method
-        order.shipping_rate = quote.rate
-        order.total = subtotal - discount_amount + quote.shipping_cost
+        order.subtotal = breakdown.base_subtotal
+        order.discount_amount = breakdown.bulk_discount_total + breakdown.coupon_discount
+        order.coupon = breakdown.coupon
+        order.shipping_cost = breakdown.shipping_cost
+        order.shipping_zone = breakdown.shipping_zone
+        order.shipping_method = breakdown.shipping_method
+        order.shipping_rate = breakdown.shipping_rate
+        order.total = breakdown.final_total
         order.save(
             update_fields=[
                 "subtotal",
@@ -261,8 +256,14 @@ class OrderCreateView(CreateAPIView):
                 "total",
             ]
         )
-        if applied_coupon is not None:
-            consume_coupon_usage(coupon=applied_coupon)
+        if breakdown.coupon is not None:
+            consume_coupon_usage(
+                coupon=breakdown.coupon,
+                order=order,
+                user=request.user if request.user.is_authenticated else None,
+                email=order.email,
+                phone=order.phone,
+            )
         resolve_and_attach_customer(
             order,
             store=store,
@@ -403,7 +404,6 @@ class DirectOrderCreateView(CreateAPIView):
         district = (ser.validated_data.get('district') or '').strip()
 
         # Create order and reduce stock
-        subtotal = Decimal('0.00')
         session_ctx = resolve_store_session(request)
         if not session_ctx.store_session_id:
             return Response(
@@ -447,35 +447,32 @@ class DirectOrderCreateView(CreateAPIView):
                     {"detail": "Stock validation failed.", "errors": e.message_dict if hasattr(e, "message_dict") else str(e)},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-            subtotal += price * quantity
         
-        # Add shipping cost from dynamic shipping rules (store-scoped).
-        discount_amount = Decimal("0.00")
-        applied_coupon = None
-        coupon_code = (order.coupon_code or "").strip()
-        if coupon_code:
-            coupon_quote = validate_coupon_for_subtotal(
-                store=order.store,
-                code=coupon_code,
-                subtotal=subtotal,
-            )
-            applied_coupon = coupon_quote.coupon
-            discount_amount = coupon_quote.discount_amount
-
-        quote = quote_shipping(
+        pricing_lines = [
+            {
+                "product": oi.product,
+                "quantity": int(oi.quantity),
+                "unit_price": Decimal(str(oi.price)),
+            }
+            for oi in order.items.select_related("product").all()
+            if oi.product is not None
+        ]
+        breakdown = PricingEngine.compute(
             store=order.store,
-            order_subtotal=subtotal - discount_amount,
+            lines=pricing_lines,
+            coupon_code=order.coupon_code,
+            user=request.user if request.user.is_authenticated else None,
             shipping_zone_id=order.shipping_zone_id,
             shipping_method_id=order.shipping_method_id,
         )
-        order.subtotal = subtotal
-        order.discount_amount = discount_amount
-        order.coupon = applied_coupon
-        order.shipping_cost = quote.shipping_cost
-        order.shipping_zone = quote.zone
-        order.shipping_method = quote.method
-        order.shipping_rate = quote.rate
-        order.total = subtotal - discount_amount + quote.shipping_cost
+        order.subtotal = breakdown.base_subtotal
+        order.discount_amount = breakdown.bulk_discount_total + breakdown.coupon_discount
+        order.coupon = breakdown.coupon
+        order.shipping_cost = breakdown.shipping_cost
+        order.shipping_zone = breakdown.shipping_zone
+        order.shipping_method = breakdown.shipping_method
+        order.shipping_rate = breakdown.shipping_rate
+        order.total = breakdown.final_total
         order.save(
             update_fields=[
                 "subtotal",
@@ -488,8 +485,14 @@ class DirectOrderCreateView(CreateAPIView):
                 "total",
             ]
         )
-        if applied_coupon is not None:
-            consume_coupon_usage(coupon=applied_coupon)
+        if breakdown.coupon is not None:
+            consume_coupon_usage(
+                coupon=breakdown.coupon,
+                order=order,
+                user=request.user if request.user.is_authenticated else None,
+                email=order.email,
+                phone=order.phone,
+            )
         resolve_and_attach_customer(
             order,
             store=order_store,

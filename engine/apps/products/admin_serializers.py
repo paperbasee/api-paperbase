@@ -11,6 +11,19 @@ from .models import (
     ProductVariantAttribute,
 )
 
+class AllowBlankNullDecimalField(serializers.DecimalField):
+    """Multipart forms send '' for cleared optional decimals; treat as None when allow_null."""
+
+    def to_internal_value(self, data):
+        if self.allow_null and (
+            data is None
+            or data == ""
+            or (isinstance(data, str) and data.strip() == "")
+        ):
+            return None
+        return super().to_internal_value(data)
+
+
 def _compact_code(raw: str, *, max_len: int) -> str:
     from django.utils.text import slugify
 
@@ -142,6 +155,9 @@ class AdminProductListSerializer(serializers.ModelSerializer):
 class AdminProductSerializer(serializers.ModelSerializer):
     images = AdminProductImageSerializer(many=True, read_only=True)
     brand = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    original_price = AllowBlankNullDecimalField(
+        max_digits=10, decimal_places=2, allow_null=True, required=False
+    )
     category = serializers.SlugRelatedField(
         slug_field='public_id',
         queryset=Category.objects.none(),
@@ -165,11 +181,11 @@ class AdminProductSerializer(serializers.ModelSerializer):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = Category.objects.none()
-        store_id = (self.context or {}).get('store_id')
+        store_id = (self.context or {}).get("store_id")
+        qs = Category.objects.all()
         if store_id is not None:
             qs = qs.filter(store_id=store_id)
-        self.fields['category'].queryset = qs
+        self.fields["category"].queryset = qs
 
     def get_variant_count(self, obj):
         n = getattr(obj, '_admin_variant_count', None)
