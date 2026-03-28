@@ -8,6 +8,19 @@ from engine.core.media_urls import absolute_media_url
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
 
+def _product_only_extra_field_schema(raw):
+    if not isinstance(raw, list):
+        return []
+    out = []
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        entity = row.get("entityType") or row.get("entity_type") or "product"
+        if str(entity).lower() == "product":
+            out.append(row)
+    return out
+
+
 class StorePublicView(APIView):
     """Read-only storefront branding and public configuration (API key)."""
 
@@ -44,8 +57,7 @@ class StorePublicView(APIView):
         modules: dict = {}
         if settings_row:
             raw_schema = getattr(settings_row, "extra_field_schema", None)
-            if isinstance(raw_schema, list):
-                extra_schema = raw_schema
+            extra_schema = _product_only_extra_field_schema(raw_schema)
             raw_modules = getattr(settings_row, "modules_enabled", None)
             if isinstance(raw_modules, dict):
                 modules = {k: bool(v) for k, v in raw_modules.items()}

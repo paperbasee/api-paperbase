@@ -104,11 +104,6 @@ class Order(models.Model):
         null=True,
         help_text="Set when ORDER_CONFIRMED was sent to the customer (send-to-courier).",
     )
-    extra_data = models.JSONField(
-        blank=True,
-        default=dict,
-        help_text="Dynamic extra fields per extra_field_schema.",
-    )
     pricing_snapshot = models.JSONField(
         blank=True,
         default=dict,

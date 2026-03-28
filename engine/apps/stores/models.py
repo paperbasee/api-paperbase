@@ -71,7 +71,7 @@ class StoreSettings(models.Model):
     extra_field_schema = models.JSONField(
         blank=True,
         default=list,
-        help_text="Extra field definitions for product, customer, order: [{id, entityType, name, fieldType, required, order, options}]",
+        help_text="Extra field definitions for products only: [{id, entityType, name, fieldType, required, order, options}]",
     )
     email_notify_owner_on_order_received = models.BooleanField(
         default=False,

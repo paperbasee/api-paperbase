@@ -128,7 +128,7 @@ class AdminOrderListSerializer(SafeModelSerializer):
         fields = [
             'public_id', 'order_number', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_name', 'phone', 'district',
-            'items_count', 'customer', 'extra_data',
+            'items_count', 'customer',
             'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
             'courier_status', 'sent_to_courier', 'customer_confirmation_sent_at',
             'created_at', 'updated_at',
@@ -166,7 +166,7 @@ class AdminOrderSerializer(SafeModelSerializer):
             'tracking_number', 'customer',
             'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
             'courier_status', 'sent_to_courier', 'customer_confirmation_sent_at',
-            'pricing_snapshot', 'extra_data', 'items', 'allowed_next_statuses', 'created_at', 'updated_at',
+            'pricing_snapshot', 'items', 'allowed_next_statuses', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'public_id', 'order_number', 'status', 'subtotal', 'shipping_cost', 'total',
@@ -259,7 +259,6 @@ class AdminOrderUpdateSerializer(SafeModelSerializer):
             "phone",
             "district",
             "tracking_number",
-            "extra_data",
             "items",
             "total",
             "created_at",
@@ -479,7 +478,6 @@ class AdminOrderCreateSerializer(SafeModelSerializer):
             "phone",
             "district",
             "tracking_number",
-            "extra_data",
             "items",
             "total",
             "created_at",

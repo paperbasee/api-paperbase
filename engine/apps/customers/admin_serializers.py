@@ -52,7 +52,6 @@ class AdminCustomerSerializer(SafeModelSerializer):
             "marketing_opt_in",
             "default_shipping_address_public_id",
             "default_billing_address_public_id",
-            "extra_data",
             "addresses",
             "created_at",
             "updated_at",
@@ -87,7 +86,6 @@ class AdminCustomerListSerializer(SafeModelSerializer):
             "address",
             "total_orders",
             "marketing_opt_in",
-            "extra_data",
             "created_at",
         ]
 

@@ -88,7 +88,6 @@ class OrderSerializer(SafeModelSerializer):
             'tracking_number',
             'courier_provider', 'courier_consignment_id', 'courier_tracking_code', 'courier_status',
             'sent_to_courier', 'customer_confirmation_sent_at',
-            'extra_data',
             'customer', 'created_at', 'updated_at', 'items',
         ]
         read_only_fields = ['public_id', 'order_number']
