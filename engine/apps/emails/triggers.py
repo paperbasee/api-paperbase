@@ -17,7 +17,6 @@ from engine.apps.stores.services import (
 
 from .constants import (
     GENERIC_NOTIFICATION,
-    ORDER_CONFIRMED,
     ORDER_RECEIVED,
     PLATFORM_NEW_SUBSCRIPTION,
     SUBSCRIPTION_ACTIVATED,
@@ -25,7 +24,7 @@ from .constants import (
     SUBSCRIPTION_PAYMENT,
     TWO_FA_DISABLE,
 )
-from .tasks import send_email_task
+from .tasks import send_email_task, send_order_email_task
 
 
 def _store_internal_email(store) -> str | None:
@@ -69,7 +68,7 @@ def notify_store_new_order(order) -> None:
 
 
 def should_send_customer_confirmation_order_email(order) -> bool:
-    """Whether send-to-courier should queue ORDER_CONFIRMED (premium + per-store setting)."""
+    """Whether courier dispatch should queue ORDER_CONFIRMED (premium + per-store setting)."""
     if order.customer_confirmation_sent_at is not None:
         return False
     owner = get_store_owner_user(order.store)
@@ -79,10 +78,10 @@ def should_send_customer_confirmation_order_email(order) -> bool:
     return bool(settings.email_customer_on_order_confirmed)
 
 
-def notify_customer_order_confirmation_send_to_courier(order) -> bool:
+def queue_customer_order_dispatched_email(order) -> bool:
     """
-    Queue ORDER_CONFIRMED to the customer when enabled.
-    Returns True if queued; False if skipped (not enabled, no email) or already sent.
+    Queue ORDER_CONFIRMED via send_order_email_task after successful courier dispatch.
+    Returns True if a task was scheduled; False if skipped.
     """
     if order.customer_confirmation_sent_at is not None:
         return False
@@ -91,19 +90,13 @@ def notify_customer_order_confirmation_send_to_courier(order) -> bool:
     customer_email = (order.email or "").strip()
     if not customer_email:
         return False
-    store = order.store
-    send_email_task.delay(
-        ORDER_CONFIRMED,
-        customer_email,
-        {
-            "store_name": store.name,
-            "order_number": order.order_number,
-            "customer_name": (order.shipping_name or "").strip(),
-            "total": str(order.total),
-            "currency": store.currency,
-        },
-    )
+    send_order_email_task.delay(str(order.public_id))
     return True
+
+
+def notify_customer_order_confirmation_send_to_courier(order) -> bool:
+    """Backward-compatible name for queue_customer_order_dispatched_email."""
+    return queue_customer_order_dispatched_email(order)
 
 
 def subscription_payment_receipt_worth_sending(source: str, amount, provider: str) -> bool:

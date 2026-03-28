@@ -19,7 +19,6 @@ from engine.apps.orders.services import (
 )
 
 from .models import Order, OrderItem
-from .services import get_allowed_next_order_statuses
 
 
 class StoreScopedProductSlugRelatedField(serializers.SlugRelatedField):
@@ -129,8 +128,8 @@ class AdminOrderListSerializer(SafeModelSerializer):
             'public_id', 'order_number', 'email', 'status', 'subtotal', 'shipping_cost', 'total',
             'shipping_name', 'phone', 'district',
             'items_count', 'customer',
-            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
-            'courier_status', 'sent_to_courier', 'customer_confirmation_sent_at',
+            'courier_provider', 'courier_consignment_id',
+            'sent_to_courier', 'customer_confirmation_sent_at',
             'created_at', 'updated_at',
         ]
 
@@ -153,7 +152,6 @@ class AdminOrderSerializer(SafeModelSerializer):
         source="shipping_rate.public_id", read_only=True, allow_null=True
     )
     customer = serializers.SerializerMethodField()
-    allowed_next_statuses = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -163,15 +161,15 @@ class AdminOrderSerializer(SafeModelSerializer):
             'shipping_zone_public_id', 'shipping_method_public_id', 'shipping_rate_public_id',
             'shipping_name', 'shipping_address', 'phone',
             'district',
-            'tracking_number', 'customer',
-            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
-            'courier_status', 'sent_to_courier', 'customer_confirmation_sent_at',
-            'pricing_snapshot', 'items', 'allowed_next_statuses', 'created_at', 'updated_at',
+            'customer',
+            'courier_provider', 'courier_consignment_id',
+            'sent_to_courier', 'customer_confirmation_sent_at',
+            'pricing_snapshot', 'items', 'created_at', 'updated_at',
         ]
         read_only_fields = [
             'public_id', 'order_number', 'status', 'subtotal', 'shipping_cost', 'total',
-            'courier_provider', 'courier_consignment_id', 'courier_tracking_code',
-            'courier_status', 'sent_to_courier', 'customer_confirmation_sent_at',
+            'courier_provider', 'courier_consignment_id',
+            'sent_to_courier', 'customer_confirmation_sent_at',
             'pricing_snapshot', 'created_at', 'updated_at',
         ]
 
@@ -180,9 +178,6 @@ class AdminOrderSerializer(SafeModelSerializer):
         if not customer:
             return None
         return {"public_id": customer.public_id, "name": customer.name, "phone": customer.phone}
-
-    def get_allowed_next_statuses(self, obj):
-        return get_allowed_next_order_statuses(obj.status)
 
 
 class AdminOrderItemUpdateSerializer(serializers.Serializer):
@@ -258,7 +253,6 @@ class AdminOrderUpdateSerializer(SafeModelSerializer):
             "shipping_address",
             "phone",
             "district",
-            "tracking_number",
             "items",
             "total",
             "created_at",
@@ -477,7 +471,6 @@ class AdminOrderCreateSerializer(SafeModelSerializer):
             "shipping_address",
             "phone",
             "district",
-            "tracking_number",
             "items",
             "total",
             "created_at",

@@ -1,13 +1,12 @@
 from decimal import Decimal
 
+from django.db import IntegrityError
 from django.db import transaction
 from django.db.models import F
 from rest_framework.exceptions import ValidationError
 
 from engine.apps.customers.models import Customer
-from django.db import IntegrityError
-
-from engine.apps.orders.models import Order, OrderStatusHistory, StockRestoreLog
+from engine.apps.orders.models import Order, StockRestoreLog
 from engine.apps.orders.pricing import PricingEngine
 from engine.apps.orders.stock import adjust_stock
 from engine.apps.products.models import Product, ProductVariant
@@ -163,85 +162,49 @@ def restore_order_item_stock(*, store_id: int, product_id, variant_id, quantity:
     )
 
 
-ORDER_STATUS_TRANSITIONS: dict[str, set[str]] = {
-    Order.Status.PENDING: {
-        Order.Status.CONFIRMED,
-        Order.Status.FAILED,
-        Order.Status.CANCELLED,
-    },
-    Order.Status.CONFIRMED: {
-        Order.Status.PROCESSING,
-        Order.Status.FAILED,
-        Order.Status.CANCELLED,
-    },
-    Order.Status.PROCESSING: {
-        Order.Status.SHIPPED,
-        Order.Status.FAILED,
-        Order.Status.CANCELLED,
-    },
-    Order.Status.SHIPPED: {
-        Order.Status.DELIVERED,
-    },
-    Order.Status.DELIVERED: set(),
-    Order.Status.FAILED: set(),
-    Order.Status.CANCELLED: set(),
-    # Legacy status kept as terminal to avoid breaking historical data.
-    Order.Status.RETURNED: set(),
-}
-
-
-def get_allowed_next_order_statuses(current_status: str) -> list[str]:
-    return sorted(ORDER_STATUS_TRANSITIONS.get(current_status, set()))
-
-
-def ensure_valid_order_status_transition(*, from_status: str, to_status: str) -> None:
-    if to_status not in dict(Order.Status.choices):
-        raise ValidationError({"status": "Invalid order status."})
-    allowed = ORDER_STATUS_TRANSITIONS.get(from_status, set())
-    if to_status not in allowed:
-        raise ValidationError(
-            {
-                "status": (
-                    f"Invalid status transition from '{from_status}' to '{to_status}'. "
-                    f"Allowed: {', '.join(sorted(allowed)) or 'none'}."
-                )
-            }
-        )
-
-
-def transition_order_status(
+def apply_order_status_change(
     *,
     order: Order,
     to_status: str,
-    note: str = "",
-    actor_label: str = "",
 ) -> Order:
-    terminal_restore_statuses = {
-        Order.Status.FAILED,
-        Order.Status.CANCELLED,
-        Order.Status.RETURNED,
-    }
+    """
+    Set order status to pending, confirmed, or cancelled.
+
+    Stock is restored (once per line item, idempotent) only when entering cancelled
+    from a non-cancelled state.
+
+    Cancelled orders cannot be moved to another status without manual inventory fixes.
+    """
+    valid = {Order.Status.PENDING, Order.Status.CONFIRMED, Order.Status.CANCELLED}
+    if to_status not in valid:
+        raise ValidationError({"status": "Invalid order status."})
+
     with transaction.atomic():
         locked = Order.objects.select_for_update().prefetch_related("items").get(pk=order.pk)
         from_status = locked.status
+
+        if from_status == Order.Status.CANCELLED and to_status != Order.Status.CANCELLED:
+            raise ValidationError(
+                {"status": "Cannot change status of a cancelled order."}
+            )
+
         if from_status == to_status:
             return locked
-        ensure_valid_order_status_transition(from_status=from_status, to_status=to_status)
 
-        if to_status in terminal_restore_statuses:
+        if to_status == Order.Status.CANCELLED and from_status != Order.Status.CANCELLED:
+            reason = StockRestoreLog.Reason.CANCELLED
             for item in locked.items.all():
                 try:
                     restore_log, created = StockRestoreLog.objects.get_or_create(
                         order=locked,
                         order_item=item,
-                        reason=to_status,
+                        reason=reason,
                         defaults={
                             "store_id": locked.store_id,
                             "quantity": int(item.quantity),
                         },
                     )
                 except IntegrityError:
-                    # Concurrent transition retries can race; uniqueness preserves idempotency.
                     continue
                 if not created:
                     continue
@@ -257,12 +220,4 @@ def transition_order_status(
 
         locked.status = to_status
         locked.save(update_fields=["status", "updated_at"])
-        note_text = (note or "").strip()
-        if actor_label:
-            note_text = f"{actor_label}: {note_text}" if note_text else actor_label
-        OrderStatusHistory.objects.create(
-            order=locked,
-            status=to_status,
-            note=note_text[:255],
-        )
         return locked

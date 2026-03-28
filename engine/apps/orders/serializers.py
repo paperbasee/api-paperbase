@@ -85,8 +85,7 @@ class OrderSerializer(SafeModelSerializer):
             'shipping_zone_public_id', 'shipping_method_public_id', 'shipping_rate_public_id',
             'shipping_name', 'shipping_address',
             'phone', 'email', 'district',
-            'tracking_number',
-            'courier_provider', 'courier_consignment_id', 'courier_tracking_code', 'courier_status',
+            'courier_provider', 'courier_consignment_id',
             'sent_to_courier', 'customer_confirmation_sent_at',
             'customer', 'created_at', 'updated_at', 'items',
         ]

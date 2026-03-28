@@ -59,16 +59,24 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
         ),
     },
     ORDER_CONFIRMED: {
-        "subject": "Your order {{ order_number }} is confirmed",
+        "subject": "Your order {{ order_number }} is on the way",
         "html_body": (
             "<p>Hello {{ customer_name|default:'Customer' }},</p>"
-            "<p>Your order {{ order_number }} at {{ store_name }} is confirmed.</p>"
+            "<p>Your order {{ order_number }} at {{ store_name }} has been handed off to our courier.</p>"
             "<p>Total: {{ total }} {{ currency }}</p>"
+            "{% if courier_provider_label %}"
+            "<p>Courier: {{ courier_provider_label }}</p>"
+            "{% endif %}"
+            "{% if courier_consignment_id %}"
+            "<p>Tracking / consignment ID: {{ courier_consignment_id }}</p>"
+            "{% endif %}"
         ),
         "text_body": (
             "Hello {{ customer_name|default:'Customer' }},\n"
-            "Your order {{ order_number }} at {{ store_name }} is confirmed.\n"
+            "Your order {{ order_number }} at {{ store_name }} has been handed off to our courier.\n"
             "Total: {{ total }} {{ currency }}\n"
+            "{% if courier_provider_label %}Courier: {{ courier_provider_label }}\n{% endif %}"
+            "{% if courier_consignment_id %}Consignment ID: {{ courier_consignment_id }}\n{% endif %}"
         ),
     },
     SUBSCRIPTION_PAYMENT: {

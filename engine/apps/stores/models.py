@@ -79,7 +79,7 @@ class StoreSettings(models.Model):
     )
     email_customer_on_order_confirmed = models.BooleanField(
         default=False,
-        help_text="Premium: email customer when order is confirmed (send-to-courier).",
+        help_text="Premium: email customer when the order is sent to courier (dispatch).",
     )
     public_api_enabled = models.BooleanField(
         default=False,

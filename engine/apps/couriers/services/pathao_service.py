@@ -1,7 +1,7 @@
 """
 Pathao courier integration service.
 
-Sends orders to Pathao via their Aladdin API and retrieves tracking status.
+Sends orders to Pathao via their Aladdin API.
 Decryption of stored credentials happens exclusively inside this module.
 """
 
@@ -17,7 +17,6 @@ from engine.core.encryption import decrypt_value
 logger = logging.getLogger(__name__)
 
 PATHAO_ORDER_ENDPOINT = "/aladdin/api/v1/orders"
-PATHAO_TRACKING_ENDPOINT = "/aladdin/api/v1/orders/{consignment_id}/tracking"
 
 
 def _base_url(courier) -> str:
@@ -65,7 +64,7 @@ def create_order(order, courier) -> dict[str, Any]:
     """
     Create an order on Pathao.
 
-    Returns dict with keys: consignment_id, tracking_code, status, raw_response.
+    Returns dict with keys: consignment_id, raw_response.
     Raises requests.HTTPError on failure.
     """
     base = _base_url(courier)
@@ -80,30 +79,5 @@ def create_order(order, courier) -> dict[str, Any]:
     result_data = data.get("data", data)
     return {
         "consignment_id": str(result_data.get("consignment_id", "")),
-        "tracking_code": str(result_data.get("tracking_code", "")),
-        "status": str(result_data.get("order_status", "pending")),
-        "raw_response": data,
-    }
-
-
-def track_order(order, courier) -> dict[str, Any]:
-    """
-    Retrieve tracking information for a Pathao order.
-
-    Returns dict with keys: status, details, raw_response.
-    """
-    base = _base_url(courier)
-    consignment_id = order.courier_consignment_id
-    url = f"{base}{PATHAO_TRACKING_ENDPOINT.format(consignment_id=consignment_id)}"
-    headers = _auth_headers(courier)
-
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-
-    result_data = data.get("data", data)
-    return {
-        "status": str(result_data.get("order_status", order.courier_status)),
-        "details": result_data,
         "raw_response": data,
     }

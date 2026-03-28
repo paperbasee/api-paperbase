@@ -5,7 +5,7 @@ from rest_framework.test import APIClient
 from rest_framework.views import APIView
 
 from engine.apps.orders.models import Order, OrderItem, StockRestoreLog
-from engine.apps.orders.services import transition_order_status
+from engine.apps.orders.services import apply_order_status_change
 from engine.apps.inventory.models import Inventory
 from engine.apps.products.models import Category, Product, ProductVariant
 from engine.apps.products.stock_sync import sync_product_stock_from_variants
@@ -476,7 +476,7 @@ def test_variant_stock_sync_updates_product_total_consistently():
 
 
 @pytest.mark.django_db
-def test_terminal_status_transition_restores_stock_once_per_item_reason():
+def test_cancelled_status_restores_stock_once_per_item():
     store = _make_store("Restore Once")
     product = _make_product(store, stock=0)
     zone = _make_zone(store)
@@ -495,8 +495,8 @@ def test_terminal_status_transition_restores_stock_once_per_item_reason():
     )
     item = OrderItem.objects.create(order=order, product=product, quantity=2, price=product.price)
     with tenant_scope_from_store(store=store, reason="test fixture"):
-        transition_order_status(order=order, to_status=Order.Status.FAILED, note="payment-fail", actor_label="test")
-        transition_order_status(order=order, to_status=Order.Status.FAILED, note="retry", actor_label="test")
+        apply_order_status_change(order=order, to_status=Order.Status.CANCELLED)
+        apply_order_status_change(order=order, to_status=Order.Status.CANCELLED)
 
     inv = Inventory.objects.get(product=product, variant__isnull=True)
     assert inv.quantity == 5
@@ -504,7 +504,7 @@ def test_terminal_status_transition_restores_stock_once_per_item_reason():
         StockRestoreLog.objects.filter(
             order=order,
             order_item=item,
-            reason=Order.Status.FAILED,
+            reason=StockRestoreLog.Reason.CANCELLED,
         ).count()
         == 1
     )

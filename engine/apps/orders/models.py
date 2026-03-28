@@ -24,17 +24,12 @@ class OrderNumberCounter(models.Model):
 
 
 class Order(models.Model):
-    """Order for checkout and track-order. Status lifecycle: Pending -> Confirmed -> Processing -> Shipped -> Delivered (or Cancelled/Returned)."""
+    """Store order. Status: pending (default), confirmed, or cancelled."""
 
     class Status(models.TextChoices):
         PENDING = 'pending', 'Pending'
         CONFIRMED = 'confirmed', 'Confirmed'
-        PROCESSING = 'processing', 'Processing'
-        SHIPPED = 'shipped', 'Shipped'
-        DELIVERED = 'delivered', 'Delivered'
-        FAILED = 'failed', 'Failed'
         CANCELLED = 'cancelled', 'Cancelled'
-        RETURNED = 'returned', 'Returned'
 
     store = models.ForeignKey(
         Store,
@@ -93,16 +88,13 @@ class Order(models.Model):
     shipping_address = models.TextField(blank=True)
     phone = models.CharField(max_length=20, blank=True)
     district = models.CharField(max_length=100, blank=True, default='')
-    tracking_number = models.CharField(max_length=100, blank=True)
     courier_provider = models.CharField(max_length=20, blank=True, default="")
     courier_consignment_id = models.CharField(max_length=100, blank=True, default="")
-    courier_tracking_code = models.CharField(max_length=100, blank=True, default="")
-    courier_status = models.CharField(max_length=50, blank=True, default="")
     sent_to_courier = models.BooleanField(default=False)
     customer_confirmation_sent_at = models.DateTimeField(
         blank=True,
         null=True,
-        help_text="Set when ORDER_CONFIRMED was sent to the customer (send-to-courier).",
+        help_text="Set when ORDER_CONFIRMED was sent after courier dispatch.",
     )
     pricing_snapshot = models.JSONField(
         blank=True,
@@ -158,21 +150,6 @@ class OrderAddress(models.Model):
         return f"{self.order.order_number} - {self.get_address_type_display()}"
 
 
-class OrderStatusHistory(models.Model):
-    """Audit trail of order status changes."""
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='status_history')
-    status = models.CharField(max_length=20, choices=Order.Status.choices)
-    note = models.CharField(max_length=255, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        ordering = ['-created_at']
-        verbose_name_plural = 'Order status history'
-
-    def __str__(self):
-        return f"{self.order.order_number} -> {self.status}"
-
-
 class OrderItem(models.Model):
     """Line item in an order with price snapshot."""
     public_id = models.CharField(
@@ -212,8 +189,6 @@ class OrderItem(models.Model):
 class StockRestoreLog(models.Model):
     class Reason(models.TextChoices):
         CANCELLED = "cancelled", "Cancelled"
-        FAILED = "failed", "Failed"
-        RETURNED = "returned", "Returned"
 
     order = models.ForeignKey(
         Order,

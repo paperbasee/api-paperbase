@@ -25,7 +25,6 @@ from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
 from engine.apps.customers.models import Customer, CustomerAddress
 from engine.apps.notifications.models import StorefrontCTA
-from engine.apps.orders.services import transition_order_status
 
 User = get_user_model()
 

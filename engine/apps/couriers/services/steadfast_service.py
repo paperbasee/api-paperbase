@@ -1,7 +1,7 @@
 """
 Steadfast (Packzy) courier integration service.
 
-Sends orders to Steadfast via their REST API and retrieves tracking status.
+Sends orders to Steadfast via their REST API.
 Decryption of stored credentials happens exclusively inside this module.
 """
 
@@ -46,7 +46,7 @@ def create_order(order, courier) -> dict[str, Any]:
     """
     Create an order on Steadfast.
 
-    Returns dict with keys: consignment_id, tracking_code, status, raw_response.
+    Returns dict with keys: consignment_id, raw_response.
     Raises requests.HTTPError on failure.
     """
     url = f"{STEADFAST_BASE_URL}/create_order"
@@ -60,30 +60,5 @@ def create_order(order, courier) -> dict[str, Any]:
     result_data = data.get("data", data)
     return {
         "consignment_id": str(result_data.get("consignment_id", "")),
-        "tracking_code": str(result_data.get("tracking_code", "")),
-        "status": str(result_data.get("status", "pending")),
-        "raw_response": data,
-    }
-
-
-def track_order(order, courier) -> dict[str, Any]:
-    """
-    Retrieve tracking information for a Steadfast order.
-
-    Uses the invoice-based status endpoint.
-    Returns dict with keys: status, details, raw_response.
-    """
-    invoice = order.order_number
-    url = f"{STEADFAST_BASE_URL}/status_by_invoice/{invoice}"
-    headers = _auth_headers(courier)
-
-    response = requests.get(url, headers=headers, timeout=30)
-    response.raise_for_status()
-    data = response.json()
-
-    result_data = data.get("data", data)
-    return {
-        "status": str(result_data.get("status", order.courier_status)),
-        "details": result_data,
         "raw_response": data,
     }

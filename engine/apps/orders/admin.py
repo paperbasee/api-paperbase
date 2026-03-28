@@ -5,18 +5,12 @@ from django.utils.html import format_html
 
 from .stock import adjust_stock
 
-from .models import Order, OrderItem, OrderAddress, OrderStatusHistory
+from .models import Order, OrderItem, OrderAddress
 
 
 class OrderAddressInline(admin.TabularInline):
     model = OrderAddress
     extra = 0
-
-
-class OrderStatusHistoryInline(admin.TabularInline):
-    model = OrderStatusHistory
-    extra = 0
-    readonly_fields = ['status', 'note', 'created_at']
 
 
 class OrderItemInline(admin.TabularInline):
@@ -33,7 +27,7 @@ class OrderAdmin(admin.ModelAdmin):
         'status', 'total', 'created_at',
     ]
     list_filter = ['status', 'created_at']
-    inlines = [OrderItemInline, OrderAddressInline, OrderStatusHistoryInline]
+    inlines = [OrderItemInline, OrderAddressInline]
     readonly_fields = (
         "id",
         "order_number",
@@ -65,7 +59,6 @@ class OrderAdmin(admin.ModelAdmin):
                     "phone",
                     "shipping_address",
                     "district",
-                    "tracking_number",
                 ),
             },
         ),

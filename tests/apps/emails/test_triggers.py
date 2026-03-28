@@ -12,7 +12,6 @@ from engine.apps.billing.models import Plan, Subscription
 from engine.apps.billing.services import activate_subscription
 from engine.apps.stores.models import Store, StoreMembership, StoreSettings
 from engine.apps.emails.constants import (
-    ORDER_CONFIRMED,
     ORDER_RECEIVED,
     PLATFORM_NEW_SUBSCRIPTION,
     SUBSCRIPTION_ACTIVATED,
@@ -137,13 +136,13 @@ class NotifyStoreNewOrderNonPremiumTests(TestCase):
 
 class CustomerConfirmationSendToCourierTests(TestCase):
     @patch("engine.apps.emails.triggers.has_feature", return_value=True)
-    @patch("engine.apps.emails.tasks.send_email_task.delay")
+    @patch("engine.apps.emails.tasks.send_order_email_task.delay")
     def test_queues_confirmation_once(self, mock_delay, _mock_hf):
         store = _store_with_owner_and_settings()
         order = _order(store)
         self.assertTrue(notify_customer_order_confirmation_send_to_courier(order))
         mock_delay.assert_called_once()
-        self.assertEqual(mock_delay.call_args[0][0], ORDER_CONFIRMED)
+        self.assertEqual(mock_delay.call_args[0][0], str(order.public_id))
         order.customer_confirmation_sent_at = timezone.now()
         order.save()
         mock_delay.reset_mock()
@@ -151,7 +150,7 @@ class CustomerConfirmationSendToCourierTests(TestCase):
         mock_delay.assert_not_called()
 
     @patch("engine.apps.emails.triggers.has_feature", return_value=True)
-    @patch("engine.apps.emails.tasks.send_email_task.delay")
+    @patch("engine.apps.emails.tasks.send_order_email_task.delay")
     def test_skips_when_setting_off(self, mock_delay, _mock_hf):
         store = _store_with_owner_and_settings(email_notify_customer=False)
         order = _order(store)
