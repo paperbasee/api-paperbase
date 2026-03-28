@@ -17,6 +17,7 @@ from django.shortcuts import get_object_or_404
 from engine.apps.inventory.models import Inventory
 from engine.core import cache_service
 
+from .category_tree import descendant_category_pks_including_self
 from .models import (
     Category,
     Product,
@@ -74,8 +75,6 @@ def _normalize_list_params(query_params) -> dict:
         "price_max": query_params.get("price_max", ""),
         "attributes": query_params.get("attributes", ""),
         "ordering": ordering,
-        "featured": query_params.get("featured", ""),
-        "hot_deals": query_params.get("hot_deals", ""),
     }
 
 
@@ -111,7 +110,22 @@ def build_product_list_queryset(store, query_params):
     if category:
         slugs = [c.strip() for c in category.split(",") if c.strip()]
         if slugs:
-            qs = qs.filter(category__slug__in=slugs)
+            roots = list(
+                Category.objects.filter(
+                    store=store, slug__in=slugs, is_active=True
+                ).values_list("pk", flat=True)
+            )
+            if roots:
+                expanded: set[int] = set()
+                for pk in roots:
+                    expanded.update(
+                        descendant_category_pks_including_self(
+                            store_id=store.id, root_pk=pk
+                        )
+                    )
+                qs = qs.filter(category_id__in=expanded)
+            else:
+                qs = qs.none()
 
     brand = query_params.get("brand")
     if brand:
@@ -147,14 +161,6 @@ def build_product_list_queryset(store, query_params):
                 variants__is_active=True,
                 variants__attribute_values__attribute_value__public_id__in=attr_value_ids,
             ).distinct()
-
-    featured = query_params.get("featured")
-    if featured and featured.lower() == "true":
-        qs = qs.filter(is_featured=True)
-
-    hot_deals = query_params.get("hot_deals")
-    if hot_deals and hot_deals.lower() == "true":
-        qs = qs.filter(badge="sale")
 
     ordering = (query_params.get("ordering") or "").strip().lower()
     if not ordering:
@@ -318,6 +324,7 @@ def _normalize_category_params(query_params) -> dict:
     return {
         "page": query_params.get("page", "1"),
         "parent": query_params.get("parent", ""),
+        "tree": (query_params.get("tree") or "").strip().lower(),
     }
 
 
@@ -349,6 +356,60 @@ def build_category_list_queryset(store, query_params):
     else:
         qs = qs.filter(parent__isnull=True)
     return qs
+
+
+def build_storefront_category_tree(store, request):
+    """Nested category payload for storefront (`tree=1`); active categories only."""
+    cats = list(
+        Category.objects.filter(store=store, is_active=True)
+        .select_related("parent")
+        .order_by("parent_id", "order", "name")
+    )
+    by_parent: dict[int | None, list] = {}
+    for c in cats:
+        by_parent.setdefault(c.parent_id, []).append(c)
+    for row in by_parent.values():
+        row.sort(key=lambda x: (x.order, x.name))
+
+    def node(c):
+        ser = CategorySerializer(c, context={"request": request})
+        out = dict(ser.data)
+        out["children"] = [node(ch) for ch in by_parent.get(c.pk, [])]
+        return out
+
+    return [node(c) for c in by_parent.get(None, [])]
+
+
+def build_admin_category_tree(store, request):
+    """Full category tree for admin dashboard (`tree=1`); includes inactive categories."""
+    from django.db.models import Count
+
+    from .admin_serializers import AdminCategorySerializer
+
+    cats = list(
+        Category.objects.filter(store=store)
+        .select_related("parent")
+        .annotate(
+            _pc=Count("products", distinct=False),
+            _child_count=Count("children", distinct=False),
+        )
+        .order_by("parent_id", "order", "name")
+    )
+    by_parent: dict[int | None, list] = {}
+    for c in cats:
+        by_parent.setdefault(c.parent_id, []).append(c)
+    for row in by_parent.values():
+        row.sort(key=lambda x: (x.order, x.name))
+
+    def node(c):
+        ser = AdminCategorySerializer(
+            c, context={"request": request, "store_id": store.pk}
+        )
+        out = dict(ser.data)
+        out["children"] = [node(ch) for ch in by_parent.get(c.pk, [])]
+        return out
+
+    return [node(c) for c in by_parent.get(None, [])]
 
 
 # ---------------------------------------------------------------------------
@@ -400,9 +461,20 @@ def _fetch_catalog_filters_payload(store) -> dict:
         is_active=True,
         status=Product.Status.ACTIVE,
     )
-    cat_ids = base_p.values_list("category_id", flat=True).distinct()
+    cat_ids = [x for x in base_p.values_list("category_id", flat=True).distinct() if x]
+    id_to_parent = dict(
+        Category.objects.filter(store=store, is_active=True).values_list("id", "parent_id")
+    )
+    ancestor_union: set[int] = set()
+    for cid in cat_ids:
+        cur: int | None = cid
+        for _ in range(6):
+            if cur is None:
+                break
+            ancestor_union.add(cur)
+            cur = id_to_parent.get(cur)
     categories = (
-        Category.objects.filter(store=store, is_active=True, id__in=cat_ids)
+        Category.objects.filter(store=store, is_active=True, id__in=ancestor_union)
         .order_by("order", "name")
         .only("public_id", "name", "slug")
     )

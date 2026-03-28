@@ -16,10 +16,10 @@ except Exception:  # pragma: no cover
 
 class Category(models.Model):
     """
-    Hierarchical product categories with unlimited nesting.
+    Hierarchical product categories (self-referencing parent), max 5 levels from root.
 
-    A category can be top-level (parent is null) or a child of another
-    category, allowing arbitrary depth (e.g. Electronics -> Phones -> Android).
+    A category can be top-level (parent is null) or a child of another category
+    in the same store. Cycles are not allowed.
     """
 
     public_id = models.CharField(
@@ -70,9 +70,25 @@ class Category(models.Model):
 
     objects = TenantAwareManager()
 
+    def clean(self):
+        super().clean()
+        if not self.store_id:
+            return
+        from .category_tree import validate_category_parent
+
+        parent = self.parent
+        if parent is None and self.parent_id:
+            parent = Category.objects.filter(pk=self.parent_id).first()
+        validate_category_parent(
+            instance_pk=self.pk,
+            store_id=self.store_id,
+            parent=parent,
+        )
+
     def save(self, *args, **kwargs):
         if not self.public_id:
             self.public_id = generate_public_id("category")
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self) -> str:
@@ -81,11 +97,6 @@ class Category(models.Model):
 
 class Product(models.Model):
     """Product model aligned with frontend Product interface. Supports variants and attributes."""
-
-    class Badge(models.TextChoices):
-        SALE = 'sale', 'Sale'
-        NEW = 'new', 'New'
-        HOT = 'hot', 'Hot'
 
     class Status(models.TextChoices):
         DRAFT = 'draft', 'Draft'
@@ -111,9 +122,6 @@ class Product(models.Model):
         max_digits=10, decimal_places=2, null=True, blank=True
     )
     image = models.ImageField(upload_to='products/', blank=True, null=True)
-    badge = models.CharField(
-        max_length=10, choices=Badge.choices, blank=True, null=True
-    )
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -135,7 +143,6 @@ class Product(models.Model):
         default=True,
         help_text="When True, stock is tracked (product or variants)"
     )
-    is_featured = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     extra_data = models.JSONField(
         blank=True,

@@ -62,7 +62,7 @@ class StoreSettings(models.Model):
     modules_enabled = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Feature/module flags for this store (e.g. products, orders, reviews).",
+        help_text="Feature/module flags for this store (e.g. products, orders).",
     )
     low_stock_threshold = models.PositiveIntegerField(
         default=5,

@@ -71,7 +71,6 @@ core/
       orders/              # Orders and order lifecycle
       payments/            # Payment methods and transactions (gateway-ready)
       shipping/            # Shipping zones, methods, rates
-      reviews/             # Product reviews and ratings
       notifications/       # Banners and system notifications
       support/             # Support tickets (public submit + admin CRUD)
   engine.apps.analytics/              # Optional Meta Conversions API
@@ -87,7 +86,7 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 | POST | `/api/v1/auth/token/` | no | JWT: `{"username","password"}` |
 | POST | `/api/v1/auth/token/refresh/` | no | `{"refresh": "..."}` |
 | **Products & catalog** |
-| GET | `/api/v1/products/` | API key | List products. `?category=`, `?brand=`, `?featured=true`, `?hot_deals=true` |
+| GET | `/api/v1/products/` | API key | List products. `?category=`, `?brand=`, `?search=`, `?price_min=`, `?price_max=`, `?attributes=` |
 | GET | `/api/v1/products/<id_or_slug>/` | API key | Product detail |
 | GET | `/api/v1/products/<id>/related/` | API key | Related products |
 | GET | `/api/v1/categories/` | API key | Category tree (tenant-scoped) |
@@ -106,10 +105,6 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 | GET | `/api/v1/shipping/options/?zone_public_id=…&order_total=…` | API key | Shipping options for a zone |
 | GET | `/api/v1/shipping/zones/` | API key | Zones with cost rules and metadata |
 | POST | `/api/v1/shipping/preview/` | API key | Shipping quote for line items |
-| **Reviews** |
-| GET | `/api/v1/reviews/?product_public_id=<public_id>` | API key | Approved reviews for product |
-| POST | `/api/v1/reviews/create/` | API key | Create review (order-verified) |
-| GET | `/api/v1/reviews/summary/?product_public_id=<public_id>` | API key | Rating summary |
 | **Customers** |
 | GET / PATCH | `/api/v1/customers/me/` | JWT | Profile |
 | GET / POST | `/api/v1/customers/addresses/` | JWT | Addresses |
@@ -149,7 +144,7 @@ See `.env.example` for the full list. Production requires at least:
 ## Auth
 
 - **JWT**: `POST /api/v1/auth/token/` with `username` and `password`. Use header: `Authorization: Bearer <access_token>`.
-- **Storefront**: Use the publishable key (`ak_pk_…`) with `Authorization: Bearer ak_pk_…` for catalog, search, banners, CTAs, reviews, shipping quotes, checkout, and support. Dashboard CRUD uses JWT + `X-Store-Public-ID` (or equivalent store resolution) and does not use the publishable key on `/api/v1/admin/…`.
+- **Storefront**: Use the publishable key (`ak_pk_…`) with `Authorization: Bearer ak_pk_…` for catalog, search, banners, CTAs, shipping quotes, checkout, and support. Dashboard CRUD uses JWT + `X-Store-Public-ID` (or equivalent store resolution) and does not use the publishable key on `/api/v1/admin/…`.
 
 ## Using as a template
 
@@ -165,4 +160,4 @@ To add a payment gateway, implement the flow in `engine.apps.payments` (create `
 ## Admin
 
 Django admin at `/<ADMIN_URL_PATH>` (defaults to `/admin/`). Configure via the `ADMIN_PATH` environment variable (no leading slash).
-Manage products, categories, orders, inventory, payments, shipping, reviews, customers, and notifications after creating a superuser.
+Manage products, categories, orders, inventory, payments, shipping, customers, and notifications after creating a superuser.

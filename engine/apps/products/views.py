@@ -36,7 +36,7 @@ class StorefrontTenantMixin:
 
 
 class ProductListView(StorefrontTenantMixin, ListAPIView):
-    """List products with optional category, brand, and featured filters."""
+    """List products with optional category, brand, search, and attribute filters."""
     serializer_class = ProductListSerializer
     permission_classes = [IsStorefrontAPIKey]
     authentication_classes = []
@@ -115,6 +115,18 @@ class CategoryListView(StorefrontTenantMixin, ListAPIView):
 
     def list(self, request, *args, **kwargs):
         store = require_api_key_store(request)
+        raw_tree = (request.query_params.get("tree") or "").lower()
+        if raw_tree in ("1", "true", "yes"):
+            cached = services.get_cached_category_list(
+                store.public_id, request.query_params
+            )
+            if cached is not None:
+                return Response(cached)
+            data = services.build_storefront_category_tree(store, request)
+            services.set_cached_category_list(
+                store.public_id, request.query_params, data
+            )
+            return Response(data)
         cached = services.get_cached_category_list(
             store.public_id, request.query_params
         )

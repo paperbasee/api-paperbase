@@ -43,6 +43,7 @@ class StoreScopedProductSlugRelatedField(serializers.SlugRelatedField):
 
 class AdminOrderItemSerializer(SafeModelSerializer):
     # Expose public_id only — do NOT expose product UUID/integer PK
+    product = serializers.SerializerMethodField()
     product_public_id = serializers.SerializerMethodField()
     product_name = serializers.SerializerMethodField()
     product_brand = serializers.SerializerMethodField()
@@ -57,12 +58,20 @@ class AdminOrderItemSerializer(SafeModelSerializer):
     class Meta:
         model = OrderItem
         fields = [
-            'public_id', 'product_public_id', 'product_name', 'product_brand', 'product_image',
+            'public_id', 'product', 'product_public_id', 'product_name', 'product_brand', 'product_image',
             'status',
             'variant_public_id', 'variant_sku', 'variant_inventory_quantity', 'variant_option_labels',
             'quantity', 'price', 'original_price',
         ]
         read_only_fields = ['public_id']
+
+    def get_product(self, obj):
+        if not obj.product:
+            return None
+        return {
+            "public_id": obj.product.public_id,
+            "name": obj.product.name,
+        }
 
     def get_product_public_id(self, obj):
         return obj.product.public_id if obj.product else None

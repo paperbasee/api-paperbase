@@ -6,7 +6,6 @@ from engine.apps.products.admin_views import (
     AdminProductViewSet,
     AdminProductImageViewSet,
     AdminCategoryViewSet,
-    AdminParentCategoryViewSet,
     AdminProductVariantViewSet,
     AdminProductAttributeViewSet,
     AdminProductAttributeValueViewSet,
@@ -16,7 +15,6 @@ from engine.apps.support.admin_views import AdminSupportTicketViewSet
 from engine.core.admin_views import AdminActivityLogViewSet
 from engine.apps.inventory.admin_views import AdminInventoryViewSet, AdminStockMovementViewSet
 from engine.apps.banners.admin_views import AdminBannerViewSet
-from engine.apps.reviews.admin_views import AdminReviewViewSet
 from engine.apps.customers.admin_views import AdminCustomerViewSet, AdminCustomerAddressViewSet
 from engine.apps.shipping.admin_views import (
     AdminShippingZoneViewSet,
@@ -45,7 +43,6 @@ router.register(
     AdminProductAttributeValueViewSet,
     basename='admin-product-attribute-values',
 )
-router.register(r'parent-categories', AdminParentCategoryViewSet, basename='admin-parent-categories')
 router.register(r'categories', AdminCategoryViewSet, basename='admin-categories')
 router.register(r'notifications', AdminNotificationViewSet, basename='admin-notifications')
 router.register(r'system-notifications', AdminStaffNotificationViewSet, basename='admin-system-notifications')
@@ -54,7 +51,6 @@ router.register(r'activities', AdminActivityLogViewSet, basename='admin-activiti
 router.register(r'inventory', AdminInventoryViewSet, basename='admin-inventory')
 router.register(r'stock-movements', AdminStockMovementViewSet, basename='admin-stock-movements')
 router.register(r'banners', AdminBannerViewSet, basename='admin-banners')
-router.register(r'reviews', AdminReviewViewSet, basename='admin-reviews')
 router.register(r'customers', AdminCustomerViewSet, basename='admin-customers')
 router.register(r'customer-addresses', AdminCustomerAddressViewSet, basename='admin-customer-addresses')
 router.register(r'shipping-zones', AdminShippingZoneViewSet, basename='admin-shipping-zones')

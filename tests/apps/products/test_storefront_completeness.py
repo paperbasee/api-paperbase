@@ -25,7 +25,7 @@ def test_catalog_filters_store_public_and_search():
         "country": "BD",
         "theme_settings": {"primary_color": "#111111"},
     }
-    settings_obj.modules_enabled = {"reviews": True}
+    settings_obj.modules_enabled = {"loyalty": True}
     settings_obj.extra_field_schema = [
         {"id": "fld_1", "entityType": "product", "name": "Warranty", "fieldType": "text"},
     ]
@@ -52,7 +52,7 @@ def test_catalog_filters_store_public_and_search():
     assert pub["currency"] == "BDT"
     assert pub["country"] == "BD"
     assert pub["theme_settings"]["primary_color"] == "#111111"
-    assert pub["modules_enabled"] == {"reviews": True}
+    assert pub["modules_enabled"] == {"loyalty": True}
     assert len(pub["extra_field_schema"]) == 1
     assert pub["extra_field_schema"][0]["id"] == "fld_1"
 

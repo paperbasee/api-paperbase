@@ -24,7 +24,6 @@ from engine.apps.orders.models import Order, OrderItem
 from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
 from engine.apps.customers.models import Customer, CustomerAddress
-from engine.apps.reviews.models import Review
 from engine.apps.notifications.models import StorefrontCTA
 from engine.apps.orders.services import transition_order_status
 
@@ -971,18 +970,6 @@ class CrossTenantAdminIsolationTests(TestCase):
             store=self.store_b, cta_text="CTA Store B", is_active=True
         )
 
-        with tenant_scope_from_store(store=self.store_b, reason="test fixture"):
-            self.review_b = Review.objects.create(
-                store=self.store_b,
-                product=self.product_b,
-                order=self.shared_order_b,
-                user=self.shared_user,
-                rating=5,
-                title="Great",
-                body="Great product",
-                status=Review.Status.APPROVED,
-            )
-
     def _auth_as(self, user, store):
         self.client.force_authenticate(user=user)
         self.client.credentials(HTTP_X_STORE_PUBLIC_ID=store.public_id)
@@ -1038,29 +1025,6 @@ class CrossTenantAdminIsolationTests(TestCase):
         resp = self.client.get(
             f"/api/v1/orders/{self.order_b.public_id}/",
             {"email": "cust-b@example.com"},
-            HTTP_HOST="admin-a.local",
-        )
-        self.assertIn(resp.status_code, [401, 403, 404])
-
-    def test_review_summary_cross_store_product_is_blocked(self):
-        resp = self.client.get(
-            "/api/v1/reviews/summary/",
-            {"product_public_id": self.product_b.public_id},
-            HTTP_HOST="admin-a.local",
-        )
-        self.assertIn(resp.status_code, [401, 403, 404])
-
-    def test_review_create_cross_store_product_is_blocked(self):
-        self.client.force_authenticate(user=self.shared_user)
-        resp = self.client.post(
-            "/api/v1/reviews/create/",
-            {
-                "product_public_id": self.product_b.public_id,
-                "rating": 5,
-                "title": "Blocked",
-                "body": "Should fail",
-            },
-            format="json",
             HTTP_HOST="admin-a.local",
         )
         self.assertIn(resp.status_code, [401, 403, 404])

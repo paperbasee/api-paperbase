@@ -126,9 +126,9 @@ class AdminProductListSerializer(SafeModelSerializer):
         model = Product
         fields = [
             'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
-            'image_url', 'badge', 'category_public_id', 'category_name',
+            'image_url', 'category_public_id', 'category_name',
             'variant_count', 'total_stock', 'available_quantity', 'stock_source',
-            'is_featured', 'is_active', 'extra_data', 'created_at',
+            'is_active', 'extra_data', 'created_at',
         ]
 
     def get_image_url(self, obj):
@@ -189,10 +189,10 @@ class AdminProductSerializer(SafeModelSerializer):
         model = Product
         fields = [
             'public_id', 'name', 'brand', 'slug', 'price', 'original_price',
-            'image', 'badge', 'category', 'category_name',
+            'image', 'category', 'category_name',
             'description',
             'variant_count', 'total_stock', 'available_quantity', 'stock_source',
-            'is_featured', 'is_active', 'extra_data', 'images',
+            'is_active', 'extra_data', 'images',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -252,27 +252,13 @@ class AdminProductSerializer(SafeModelSerializer):
         return super().validate(attrs)
 
 
-class AdminParentCategorySerializer(SafeModelSerializer):
-    """Serializer for top-level (parent) categories in nested hierarchy."""
-    child_count = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Category
-        fields = [
-            'public_id', 'name', 'slug', 'description', 'image',
-            'order', 'is_active', 'child_count',
-        ]
-        read_only_fields = ['public_id']
-
-    def get_child_count(self, obj):
-        return obj.children.count()
-
-
 class AdminCategorySerializer(SafeModelSerializer):
-    """Serializer for child categories (nested under a parent)."""
+    """Admin CRUD for any category node; parent is optional (null = root)."""
+
     product_count = serializers.SerializerMethodField()
+    child_count = serializers.SerializerMethodField()
     parent = serializers.SlugRelatedField(
-        slug_field='public_id',
+        slug_field="public_id",
         queryset=Category.objects.none(),
         allow_null=True,
         required=False,
@@ -282,25 +268,71 @@ class AdminCategorySerializer(SafeModelSerializer):
     class Meta:
         model = Category
         fields = [
-            'public_id', 'name', 'slug', 'description', 'image',
-            'parent', 'parent_name',
-            'order', 'is_active', 'product_count',
+            "public_id",
+            "name",
+            "slug",
+            "description",
+            "image",
+            "parent",
+            "parent_name",
+            "order",
+            "is_active",
+            "product_count",
+            "child_count",
         ]
-        read_only_fields = ['public_id']
+        read_only_fields = ["public_id"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        qs = Category.objects.filter(parent__isnull=True)
         store_id = (self.context or {}).get("store_id")
+        qs = Category.objects.all()
         if store_id is not None:
             qs = qs.filter(store_id=store_id)
+        instance = self.instance
+        if instance is not None and getattr(instance, "pk", None):
+            from .category_tree import excluded_parent_pks_for_category
+
+            qs = qs.exclude(pk__in=excluded_parent_pks_for_category(instance))
         self.fields["parent"].queryset = qs
 
     def get_product_count(self, obj):
+        n = getattr(obj, "_pc", None)
+        if n is not None:
+            return int(n)
         return obj.products.count()
 
+    def get_child_count(self, obj):
+        n = getattr(obj, "_child_count", None)
+        if n is not None:
+            return int(n)
+        return obj.children.count()
+
     def get_parent_name(self, obj):
-        return obj.parent.name if obj.parent else ''
+        return obj.parent.name if obj.parent else ""
+
+    def validate_parent(self, value):
+        if value == "":
+            return None
+        return value
+
+    def validate(self, attrs):
+        from .category_tree import validate_category_parent
+
+        store_id = (self.context or {}).get("store_id")
+        if store_id is None:
+            return super().validate(attrs)
+        if "parent" in attrs:
+            parent = attrs["parent"]
+        elif self.instance is not None:
+            parent = self.instance.parent
+        else:
+            parent = None
+        validate_category_parent(
+            instance_pk=self.instance.pk if self.instance else None,
+            store_id=store_id,
+            parent=parent,
+        )
+        return super().validate(attrs)
 
 
 class AdminProductAttributeValueSerializer(SafeModelSerializer):

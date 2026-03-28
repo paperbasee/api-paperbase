@@ -37,12 +37,10 @@ class ProductAdmin(admin.ModelAdmin):
         'price',
         'stock',
         'status',
-        'badge',
-        'is_featured',
         'is_active',
     ]
     list_editable = ['is_active']
-    list_filter = ['category', 'status', 'badge', 'is_featured', 'is_active']
+    list_filter = ['category', 'status', 'is_active']
     search_fields = ['name', 'brand', 'sku']
     prepopulated_fields = {'slug': ('name',)}
     inlines = [ProductImageInline]
@@ -112,12 +110,12 @@ class ProductAdmin(admin.ModelAdmin):
                     ),
                 },
             ),
-            ("Pricing", {"fields": ("price", "original_price", "badge")}),
+            ("Pricing", {"fields": ("price", "original_price")}),
             ("Media", {"fields": ("image",)}),
             ("Stock", {"fields": ("stock_tracking",)}),
             (
                 "Additional Information",
-                {"fields": ("description", "is_featured", "is_active")},
+                {"fields": ("description", "is_active")},
             ),
         ]
 

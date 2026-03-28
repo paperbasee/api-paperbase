@@ -34,7 +34,6 @@ STORE_FRONTEND_ROUTE_POLICY = (
     ("/api/v1/categories/", {"GET"}),
     ("/api/v1/banners/", {"GET"}),
     ("/api/v1/notifications/", {"GET"}),
-    ("/api/v1/reviews/", {"GET", "POST"}),
     ("/api/v1/shipping/options/", {"GET"}),
     ("/api/v1/shipping/zones/", {"GET"}),
     ("/api/v1/shipping/preview/", {"POST"}),

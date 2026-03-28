@@ -38,12 +38,12 @@ def test_internal_override_requires_allowlisted_ip(settings):
     middleware = InternalOverrideMiddleware(lambda request: HttpResponse(status=200))
     factory = RequestFactory()
 
-    blocked_request = factory.get("/api/v1/reviews/", REMOTE_ADDR="10.10.10.10")
+    blocked_request = factory.get("/api/v1/products/", REMOTE_ADDR="10.10.10.10")
     blocked_request.user = user
     middleware.process_request(blocked_request)
     assert blocked_request.auth_context.internal_override_enabled is False
 
-    allowed_request = factory.get("/api/v1/reviews/", REMOTE_ADDR="127.0.0.1")
+    allowed_request = factory.get("/api/v1/products/", REMOTE_ADDR="127.0.0.1")
     allowed_request.user = user
     middleware.process_request(allowed_request)
     assert allowed_request.auth_context.internal_override_enabled is True

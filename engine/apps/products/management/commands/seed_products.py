@@ -338,8 +338,8 @@ class Command(BaseCommand):
         created = 0
         slug_counter = {}
 
-        # Tuples: (name, brand_label, subcategory_slug, price, original_price, badge)
-        for name, mfr, sub_slug, price, original_price, badge in product_list:
+        # Tuples: (name, brand_label, subcategory_slug, price, original_price, _legacy_badge)
+        for name, mfr, sub_slug, price, original_price, _badge in product_list:
             base_slug = slugify(name)
             count = slug_counter.get(base_slug, 0) + 1
             slug_counter[base_slug] = count
@@ -357,11 +357,9 @@ class Command(BaseCommand):
                 slug=slug,
                 price=Decimal(str(price)),
                 original_price=Decimal(str(original_price)) if original_price else None,
-                badge=(badge or "")[:10],
                 category=sub_cat,
                 description=description,
                 stock=random.randint(5, 150),
-                is_featured=random.random() < 0.15,
                 is_active=True,
                 status=Product.Status.ACTIVE,
             )

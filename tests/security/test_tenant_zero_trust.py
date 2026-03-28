@@ -5,7 +5,7 @@ from django.test import RequestFactory
 from engine.apps.products.models import Category, Product
 from engine.apps.stores.models import Store
 from engine.apps.marketing_integrations.services import dispatcher
-from engine.core.authz import can_override_review
+from engine.core.authz import can_enable_internal_override
 from engine.core.migration_safety import TenantSafeMigration
 from engine.core.tenant_context import TenantContextMissingError
 from engine.core.tenant_execution import system_scope, tenant_scope_from_store
@@ -71,21 +71,17 @@ def test_migration_system_scope_rejects_active_tenant_context():
 
 
 @pytest.mark.django_db
-def test_auth_bypass_via_staff_without_auth_context_fails():
+def test_auth_bypass_via_staff_without_auth_context_fails(settings):
+    settings.SECURITY_INTERNAL_OVERRIDE_ALLOWED = True
+    settings.INTERNAL_OVERRIDE_IP_ALLOWLIST = ["127.0.0.1"]
     user = User.objects.create_user(
         email="staff-bypass@example.com",
         password="secret123",
         is_staff=True,
         is_verified=True,
     )
-    request = RequestFactory().post("/api/v1/reviews/")
-    request.user = user
-
-    allowed = can_override_review(
-        request,
-        {"allow_legacy_binding_requested": True},
-    )
-    assert allowed is False
+    # Staff alone is not enough: IP must be on the allowlist.
+    assert can_enable_internal_override(user=user, client_ip="10.0.0.1") is False
 
 
 @pytest.mark.django_db

@@ -24,7 +24,6 @@ from .models import (
 )
 from .admin_serializers import (
     AdminCategorySerializer,
-    AdminParentCategorySerializer,
     AdminProductAttributeSerializer,
     AdminProductAttributeValueSerializer,
     AdminProductImageSerializer,
@@ -32,7 +31,12 @@ from .admin_serializers import (
     AdminProductSerializer,
     AdminProductVariantSerializer,
 )
-from .services import invalidate_category_cache, invalidate_product_cache
+from .category_tree import descendant_public_ids_including_self
+from .services import (
+    build_admin_category_tree,
+    invalidate_category_cache,
+    invalidate_product_cache,
+)
 
 
 class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
@@ -84,7 +88,16 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
 
         category_public_id = (self.request.query_params.get("category") or "").strip()
         if category_public_id:
-            qs = qs.filter(category__public_id=category_public_id)
+            cat = Category.objects.filter(
+                store=ctx.store, public_id=category_public_id
+            ).first()
+            if cat:
+                pids = descendant_public_ids_including_self(
+                    store_id=ctx.store.id, root_pk=cat.pk
+                )
+                qs = qs.filter(category__public_id__in=pids)
+            else:
+                qs = qs.none()
 
         try:
             if "price_min" in self.request.query_params:
@@ -241,84 +254,45 @@ class AdminProductImageViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         invalidate_product_cache(store.public_id)
 
 
-class AdminParentCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
-    """Top-level (parent) categories in nested hierarchy. Served at /admin/parent-categories/."""
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    serializer_class = AdminParentCategorySerializer
-    queryset = Category.objects.filter(parent__isnull=True).order_by('order', 'name')
-    lookup_field = 'public_id'
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        ctx = get_active_store(self.request)
-        if not ctx.store:
-            return qs.none()
-        return qs.filter(store=ctx.store)
-
-    def perform_create(self, serializer):
-        ctx = get_active_store(self.request)
-        store = ctx.store
-        if not store:
-            raise ValidationError(
-                {
-                    "detail": (
-                        "No active store resolved. Re-login, switch store, or send the "
-                        "X-Store-ID header."
-                    )
-                }
-            )
-        instance = serializer.save(parent=None, store=store)
-        invalidate_category_cache(store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.CREATE,
-            entity_type="category",
-            entity_id=instance.public_id,
-            summary=f"Parent category created: {getattr(instance, 'name', '')}".strip() or "Parent category created",
-        )
-
-    def perform_update(self, serializer):
-        instance = serializer.save(parent=None)
-        ctx = get_active_store(self.request)
-        if ctx.store:
-            invalidate_category_cache(ctx.store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.UPDATE,
-            entity_type="category",
-            entity_id=instance.public_id,
-            summary=f"Parent category updated: {getattr(instance, 'name', '')}".strip() or "Parent category updated",
-        )
-
-    def perform_destroy(self, instance):
-        name = getattr(instance, "name", "")
-        public_id = instance.public_id
-        ctx = get_active_store(self.request)
-        super().perform_destroy(instance)
-        if ctx.store:
-            invalidate_category_cache(ctx.store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.DELETE,
-            entity_type="category",
-            entity_id=public_id,
-            summary=f"Parent category deleted: {name}" if name else "Parent category deleted",
-        )
-
-
 class AdminCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
-    """Subcategories (parent is not null). Served at /admin/categories/."""
+    """All categories for the store. List: roots by default, or `parent_public_id`, or `tree=1` for nested JSON."""
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     serializer_class = AdminCategorySerializer
-    queryset = Category.objects.filter(parent__isnull=False).select_related('parent').order_by('parent', 'order', 'name')
-    lookup_field = 'public_id'
+    queryset = Category.objects.select_related("parent").order_by(
+        "parent_id", "order", "name"
+    )
+    lookup_field = "public_id"
 
     def get_queryset(self):
         qs = super().get_queryset()
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        return qs.filter(store=ctx.store)
+        qs = qs.filter(store=ctx.store)
+        if self.action != "list":
+            return qs
+        raw_tree = (self.request.query_params.get("tree") or "").lower()
+        if raw_tree in ("1", "true", "yes"):
+            return qs
+        qs = qs.annotate(
+            _pc=Count("products", distinct=False),
+            _child_count=Count("children", distinct=False),
+        )
+        parent_pid = (self.request.query_params.get("parent_public_id") or "").strip()
+        if parent_pid:
+            qs = qs.filter(parent__public_id=parent_pid)
+        else:
+            qs = qs.filter(parent__isnull=True)
+        return qs
+
+    def list(self, request, *args, **kwargs):
+        raw_tree = (request.query_params.get("tree") or "").lower()
+        if raw_tree in ("1", "true", "yes"):
+            ctx = get_active_store(request)
+            if not ctx.store:
+                return Response([])
+            return Response(build_admin_category_tree(ctx.store, request))
+        return super().list(request, *args, **kwargs)
 
     def get_serializer_context(self):
         ctx = get_active_store(self.request)

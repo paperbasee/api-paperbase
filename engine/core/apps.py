@@ -12,10 +12,6 @@ def enforce_production_override_safety() -> None:
         raise RuntimeError(
             "SECURITY_INTERNAL_OVERRIDE_ALLOWED must remain false in production."
         )
-    if bool(getattr(settings, "SECURITY_REVIEW_LEGACY_MODE_ENABLED", False)):
-        raise RuntimeError(
-            "SECURITY_REVIEW_LEGACY_MODE_ENABLED must remain false in production."
-        )
 
 
 class CoreConfig(AppConfig):

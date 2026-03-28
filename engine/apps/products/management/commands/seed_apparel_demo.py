@@ -318,8 +318,6 @@ class Command(BaseCommand):
                 stock=0,
                 stock_tracking=True,
                 status=Product.Status.ACTIVE,
-                badge=Product.Badge.NEW,
-                is_featured=True,
                 is_active=True,
                 extra_data={
                     "Material": "100% ringspun cotton",
@@ -384,8 +382,6 @@ class Command(BaseCommand):
                 stock=0,
                 stock_tracking=True,
                 status=Product.Status.ACTIVE,
-                badge=None,
-                is_featured=True,
                 is_active=True,
                 extra_data={
                     "Material": "97% cotton, 3% elastane",

@@ -60,7 +60,6 @@ INSTALLED_APPS = [
     "engine.apps.customers",
     "engine.apps.inventory",
     "engine.apps.shipping",
-    "engine.apps.reviews",
     "engine.apps.banners",
     "engine.apps.analytics",
     "engine.apps.couriers",
@@ -84,7 +83,6 @@ INTERNAL_OVERRIDE_IP_ALLOWLIST = env_list(
     default=["127.0.0.1", "::1"],
 )
 SECURITY_INTERNAL_OVERRIDE_ALLOWED = env_bool("SECURITY_INTERNAL_OVERRIDE_ALLOWED", False)
-SECURITY_REVIEW_LEGACY_MODE_ENABLED = env_bool("SECURITY_REVIEW_LEGACY_MODE_ENABLED", False)
 TENANT_GUARD_STRICT_DEV = env_bool("TENANT_GUARD_STRICT_DEV", env_bool("CI", False))
 
 # ---------------------------------------------------------------------------
@@ -99,8 +97,6 @@ CACHE_TTL_BANNERS = int(os.getenv("CACHE_TTL_BANNERS", "300"))
 CACHE_TTL_NOTIFICATIONS = int(os.getenv("CACHE_TTL_NOTIFICATIONS", "300"))
 CACHE_TTL_STORE_SETTINGS = int(os.getenv("CACHE_TTL_STORE_SETTINGS", "300"))
 CACHE_TTL_FEATURE_CONFIG = int(os.getenv("CACHE_TTL_FEATURE_CONFIG", "600"))
-CACHE_TTL_REVIEWS = int(os.getenv("CACHE_TTL_REVIEWS", "120"))
-CACHE_TTL_REVIEW_SUMMARY = int(os.getenv("CACHE_TTL_REVIEW_SUMMARY", "120"))
 CACHE_TTL_SHIPPING_OPTIONS = int(os.getenv("CACHE_TTL_SHIPPING_OPTIONS", "300"))
 
 # CORS shared pieces

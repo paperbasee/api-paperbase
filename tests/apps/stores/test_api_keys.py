@@ -123,7 +123,7 @@ class APIKeyTenantEnforcementTests(TestCase):
         self.assertFalse(requires_tenant_api_key("/api/v1/system-notifications/active/"))
         self.assertFalse(requires_tenant_api_key("/api/v1/settings/network/api-keys/"))
         self.assertTrue(requires_tenant_api_key("/api/v1/products/"))
-        self.assertTrue(requires_tenant_api_key("/api/v1/reviews/"))
+        self.assertTrue(requires_tenant_api_key("/api/v1/categories/"))
         self.assertTrue(requires_tenant_api_key("/api/v1/support/"))
         self.assertFalse(requires_tenant_api_key("/health"))
 

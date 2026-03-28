@@ -4,19 +4,6 @@ from rest_framework.permissions import BasePermission
 from engine.core.tenancy import get_active_store
 
 
-def can_override_review(request, action_context: dict | None = None) -> bool:
-    """
-    Single authority for review override decisions.
-    """
-    context = action_context or {}
-    if not bool(context.get("allow_legacy_binding_requested", False)):
-        return False
-    auth_context = getattr(request, "auth_context", None)
-    if bool(getattr(auth_context, "internal_override_enabled", False)):
-        return True
-    return False
-
-
 def can_enable_internal_override(*, user, client_ip: str) -> bool:
     allowlist = set(getattr(settings, "INTERNAL_OVERRIDE_IP_ALLOWLIST", []) or [])
     allowlist_match = bool(client_ip) and client_ip in allowlist
@@ -157,7 +144,6 @@ class IsStoreAdmin(BasePermission):
         }
 
 __all__ = [
-    "can_override_review",
     "can_enable_internal_override",
     "IsPlatformRequest",
     "IsStaffUser",
