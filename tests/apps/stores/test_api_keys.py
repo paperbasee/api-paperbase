@@ -32,7 +32,7 @@ def make_product(store: Store, *, name: str) -> Product:
         category = Category.objects.create(
             store=store,
             name=f"{name} Cat",
-            slug=f"{name.lower().replace(' ', '-')}-cat",
+            slug="",
         )
         p = Product.objects.create(
             store=store,

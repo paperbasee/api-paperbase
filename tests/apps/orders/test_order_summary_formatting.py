@@ -15,6 +15,7 @@ from engine.apps.orders.order_summary_formatting import (
 )
 from engine.apps.products.models import Category, Product
 from engine.apps.shipping.models import ShippingZone
+from engine.core.tenant_execution import tenant_scope_from_store
 
 
 def _store():
@@ -39,18 +40,19 @@ def _zone(store):
 
 
 def _product(store):
-    cat = Category.objects.create(
-        store=store,
-        name="C",
-        slug=f"c-{_uuid.uuid4().hex[:8]}",
-    )
-    return Product.objects.create(
-        store=store,
-        category=cat,
-        name="Widget",
-        slug=f"w-{_uuid.uuid4().hex[:8]}",
-        price=Decimal("65.00"),
-    )
+    with tenant_scope_from_store(store=store, reason="test fixture"):
+        cat = Category.objects.create(
+            store=store,
+            name=f"C {_uuid.uuid4().hex[:8]}",
+            slug="",
+        )
+        return Product.objects.create(
+            store=store,
+            category=cat,
+            name="Widget",
+            slug=f"w-{_uuid.uuid4().hex[:8]}",
+            price=Decimal("65.00"),
+        )
 
 
 def _order(store, **kwargs):

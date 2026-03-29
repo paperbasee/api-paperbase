@@ -49,7 +49,7 @@ def _make_product(store: Store, *, name: str = "Product", price: int = 100, stoc
         category = Category.objects.create(
             store=store,
             name=f"{name} Category",
-            slug=f"{name.lower().replace(' ', '-')}-cat",
+            slug="",
         )
         p = Product.objects.create(
             store=store,
@@ -446,7 +446,7 @@ def test_variant_stock_sync_updates_product_total_consistently():
         category = Category.objects.create(
             store=store,
             name="Stock Category",
-            slug="stock-category",
+            slug="",
         )
         product = Product.objects.create(
             store=store,

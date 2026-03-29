@@ -10,6 +10,7 @@ from engine.apps.notifications.models import StorefrontCTA
 from engine.apps.shipping.models import ShippingMethod, ShippingRate, ShippingZone
 from engine.apps.stores.models import StoreSettings
 from engine.apps.stores.services import create_store_api_key
+from engine.core.tenant_execution import tenant_scope_from_store
 from tests.apps.stores.test_api_keys import make_product, make_store
 
 
@@ -78,25 +79,26 @@ def test_catalog_filters_store_public_and_search():
 def test_shipping_zones_and_product_detail_enrichment():
     store = make_store("ShipCX")
     p = make_product(store, name="Ship Product")
-    p.brand = "ShipBrand"
-    p.sku = "SHIP-SKU-1"
-    p.original_price = Decimal("199.00")
-    p.save(update_fields=["brand", "sku", "original_price"])
-    zone = ShippingZone.objects.create(
-        store=store,
-        name="Dhaka",
-        is_active=True,
-        estimated_delivery_text="1-2",
-    )
-    method = ShippingMethod.objects.create(store=store, name="Standard", is_active=True)
-    method.zones.add(zone)
-    ShippingRate.objects.create(
-        store=store,
-        shipping_method=method,
-        shipping_zone=zone,
-        price=Decimal("60.00"),
-        min_order_total=None,
-    )
+    with tenant_scope_from_store(store=store, reason="test fixture"):
+        p.brand = "ShipBrand"
+        p.sku = "SHIP-SKU-1"
+        p.original_price = Decimal("199.00")
+        p.save(update_fields=["brand", "sku", "original_price"])
+        zone = ShippingZone.objects.create(
+            store=store,
+            name="Dhaka",
+            is_active=True,
+            estimated_delivery_text="1-2",
+        )
+        method = ShippingMethod.objects.create(store=store, name="Standard", is_active=True)
+        method.zones.add(zone)
+        ShippingRate.objects.create(
+            store=store,
+            shipping_method=method,
+            shipping_zone=zone,
+            price=Decimal("60.00"),
+            min_order_total=None,
+        )
     _row, key = create_store_api_key(store, name="fe")
     client = _api_key_client(key)
 
@@ -143,12 +145,13 @@ def test_shipping_zones_and_product_detail_enrichment():
     assert "stock" not in detail
 
     future = timezone.now() + timedelta(days=30)
-    StorefrontCTA.objects.create(
-        store=store,
-        cta_text="Scheduled promo",
-        is_active=True,
-        start_date=future,
-    )
+    with tenant_scope_from_store(store=store, reason="test fixture"):
+        StorefrontCTA.objects.create(
+            store=store,
+            cta_text="Scheduled promo",
+            is_active=True,
+            start_date=future,
+        )
     nr = client.get("/api/v1/notifications/active/")
     assert nr.status_code == 200
     notifs = nr.json()

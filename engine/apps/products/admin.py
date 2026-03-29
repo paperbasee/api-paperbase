@@ -175,9 +175,8 @@ class CategoryAdmin(admin.ModelAdmin):
     list_filter = ['parent', 'is_active']
     list_editable = ['order', 'is_active']
     search_fields = ['name', 'slug']
-    prepopulated_fields = {'slug': ('name',)}
     ordering = ['parent__name', 'order', 'name']
-    readonly_fields = ['image_preview']
+    readonly_fields = ['slug', 'image_preview']
     fieldsets = (
         (None, {
             'fields': ('name', 'slug', 'parent', 'description')

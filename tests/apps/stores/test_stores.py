@@ -95,12 +95,12 @@ def _make_owner_membership(user: User, store: Store):
 
 
 def _make_catalog_data(store: Store, user: User):
-    cat = Category.objects.create(
-        store=store,
-        name="Electronics",
-        slug="electronics",
-    )
     with tenant_scope_from_store(store=store, reason="test fixture"):
+        cat = Category.objects.create(
+            store=store,
+            name="Electronics",
+            slug="",
+        )
         product = Product.objects.create(
             store=store,
             category=cat,
@@ -115,9 +115,9 @@ def _make_catalog_data(store: Store, user: User):
             variant=None,
             defaults={"quantity": 5},
         )
-    zone = ShippingZone.objects.create(store=store, name="Store Zone", is_active=True)
-    order = Order.objects.create(store=store, email="cust@example.com", shipping_zone=zone)
-    customer = Customer.objects.create(store=store, user=user)
+        zone = ShippingZone.objects.create(store=store, name="Store Zone", is_active=True)
+        order = Order.objects.create(store=store, email="cust@example.com", shipping_zone=zone)
+        customer = Customer.objects.create(store=store, user=user)
 
     today = datetime.date.today()
     StoreAnalytics.objects.create(store=store, period_date=today)

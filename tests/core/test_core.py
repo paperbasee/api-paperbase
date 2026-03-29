@@ -58,10 +58,9 @@ def _make_membership(user, store, role=StoreMembership.Role.OWNER):
     return StoreMembership.objects.create(user=user, store=store, role=role)
 
 
-def _make_category(store, name="Cat", slug=None):
-    return Category.objects.create(
-        store=store, name=name, slug=slug or name.lower().replace(" ", "-"),
-    )
+def _make_category(store, name="Cat"):
+    with tenant_scope_from_store(store=store, reason="test fixture"):
+        return Category.objects.create(store=store, name=name, slug="")
 
 
 def _make_product(store, category, name="Product", price=10, stock=5):
@@ -469,11 +468,7 @@ class PublicIdApiTests(TestCase):
         self.assertIn("website", sl)
 
     def test_checkout_order_receipt_is_minimal_storefront_shape(self):
-        cat = Category.objects.create(
-            store=self.store,
-            name="Test Cat",
-            slug="test-cat",
-        )
+        cat = _make_category(self.store, "Test Cat")
         with tenant_scope_from_store(store=self.store, reason="test fixture"):
             product = Product.objects.create(
                 store=self.store,
@@ -530,11 +525,7 @@ class PublicIdApiTests(TestCase):
     def test_checkout_order_receipt_variant_details_string(self):
         from decimal import Decimal
 
-        cat = Category.objects.create(
-            store=self.store,
-            name="Var Cat",
-            slug="var-cat",
-        )
+        cat = _make_category(self.store, "Var Cat")
         with tenant_scope_from_store(store=self.store, reason="test fixture"):
             product = Product.objects.create(
                 store=self.store,
@@ -1063,8 +1054,8 @@ class CrossTenantAdminIsolationTests(TestCase):
         _make_membership(self.shared_user, self.store_a, StoreMembership.Role.OWNER)
         _make_membership(self.shared_user, self.store_b, StoreMembership.Role.OWNER)
 
-        self.cat_a = _make_category(self.store_a, "CatA", "cat-a")
-        self.cat_b = _make_category(self.store_b, "CatB", "cat-b")
+        self.cat_a = _make_category(self.store_a, "Cat A")
+        self.cat_b = _make_category(self.store_b, "Cat B")
 
         self.product_a = _make_product(self.store_a, self.cat_a, name="Product A")
         self.product_b = _make_product(self.store_b, self.cat_b, name="Product B")
@@ -1550,7 +1541,7 @@ class TokenTamperingTests(TestCase):
         Authenticated user with membership only in store A must be denied
         when sending X-Store-Public-ID for store B (no membership).
         """
-        cat_b = _make_category(self.store_b, "Cat B", "cat-b")
+        cat_b = _make_category(self.store_b, "Cat B")
         product_b = _make_product(self.store_b, cat_b, name="Product B")
 
         self.client.force_authenticate(user=self.user_a)
@@ -1586,7 +1577,7 @@ class TokenTamperingTests(TestCase):
         Even if the JWT carries an active_store_public_id claim for store_b,
         the user must not be able to access store_b's resources without membership.
         """
-        cat_b = _make_category(self.store_b, "Cat B2", "cat-b2")
+        cat_b = _make_category(self.store_b, "Cat B2")
         product_b = _make_product(self.store_b, cat_b, name="Product B2")
 
         # Authenticate as user_a scoped to store_a.
@@ -1631,7 +1622,7 @@ class RolePermissionIsolationTests(TestCase):
         _make_membership(self.staff, self.store, StoreMembership.Role.STAFF)
         _make_membership(self.admin_user, self.store, StoreMembership.Role.ADMIN)
 
-        self.cat = _make_category(self.store, "RoleCat", "role-cat")
+        self.cat = _make_category(self.store, "Role Cat")
         self.product = _make_product(self.store, self.cat, name="Role Product")
 
     def _auth_as(self, user):
@@ -1721,8 +1712,8 @@ class IDEnumerationTests(TestCase):
         _make_membership(self.admin_a, self.store_a)
         _make_membership(self.admin_b, self.store_b)
 
-        cat_a = _make_category(self.store_a, "IDA Cat", "ida-cat")
-        cat_b = _make_category(self.store_b, "IDB Cat", "idb-cat")
+        cat_a = _make_category(self.store_a, "IDA Cat")
+        cat_b = _make_category(self.store_b, "IDB Cat")
 
         self.product_a = _make_product(self.store_a, cat_a, name="IDOR Product A")
         self.product_b = _make_product(self.store_b, cat_b, name="IDOR Product B")

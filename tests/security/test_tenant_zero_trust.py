@@ -63,7 +63,7 @@ def test_background_task_without_context_fails(settings):
     settings.TENANT_GUARD_STRICT_DEV = True
     store = _create_store()
     with tenant_scope_from_store(store=store, reason="seed_for_background_test"):
-        category = Category.objects.create(store=store, name="Cat", slug="cat")
+        category = Category.objects.create(store=store, name="Cat", slug="")
         Product.objects.create(
             store=store,
             name="Item",
@@ -110,7 +110,7 @@ def test_dispatcher_cannot_infer_tenant_from_objects(settings):
     settings.TENANT_GUARD_STRICT_DEV = True
     store = _create_store()
     with tenant_scope_from_store(store=store, reason="dispatcher_setup"):
-        category = Category.objects.create(store=store, name="Tops", slug="tops")
+        category = Category.objects.create(store=store, name="Tops", slug="")
         product = Product.objects.create(
             store=store,
             name="Shirt",

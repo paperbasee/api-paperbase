@@ -34,7 +34,9 @@ class Category(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(
         max_length=100,
-        help_text="Slug unique per store for this category.",
+        blank=True,
+        default="",
+        help_text="URL slug per store; generated from name (unique per store).",
     )
     description = models.TextField(
         blank=True,
@@ -88,6 +90,25 @@ class Category(models.Model):
     def save(self, *args, **kwargs):
         if not self.public_id:
             self.public_id = generate_public_id("category")
+        from django.utils.text import slugify
+
+        # Derive slug from name (same pattern as Product); ignore any caller-provided slug.
+        base_source = (self.name or "").strip()
+        base_slug = slugify(base_source)[:100]
+        if not base_slug:
+            base_slug = f"category-{self.pk}" if self.pk else "category"
+        self.slug = base_slug[:100]
+        if self.store_id:
+            queryset = Category.objects.filter(store_id=self.store_id)
+            if self.pk:
+                queryset = queryset.exclude(pk=self.pk)
+            counter = 2
+            original_slug = self.slug
+            while queryset.filter(slug=self.slug).exists():
+                suffix = f"-{counter}"
+                head_len = max(1, 100 - len(suffix))
+                self.slug = (original_slug[:head_len].rstrip("-") or "c") + suffix
+                counter += 1
         self.full_clean()
         super().save(*args, **kwargs)
 

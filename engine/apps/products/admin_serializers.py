@@ -280,7 +280,7 @@ class AdminCategorySerializer(SafeModelSerializer):
             "product_count",
             "child_count",
         ]
-        read_only_fields = ["public_id"]
+        read_only_fields = ["public_id", "slug"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
