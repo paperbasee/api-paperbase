@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from config.permissions import IsStorefrontAPIKey
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
-from .serializers import NotificationSerializer
+from .serializers import StorefrontNotificationSerializer
 from . import services
 
 
@@ -18,7 +18,7 @@ class _StorefrontTenantMixin:
 
 class ActiveNotificationListView(_StorefrontTenantMixin, ListAPIView):
     """List currently active notifications for the resolved store (banner display)."""
-    serializer_class = NotificationSerializer
+    serializer_class = StorefrontNotificationSerializer
     permission_classes = [IsStorefrontAPIKey]
     authentication_classes = []
     allow_api_key = True

@@ -88,7 +88,7 @@ class StoreSettings(models.Model):
     storefront_public = models.JSONField(
         blank=True,
         default=dict,
-        help_text="Public storefront-only data: theme_settings, country, seo, policy_urls, etc.",
+        help_text="Public storefront-only data: theme_settings, country, seo, policy_urls, social_links, etc.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

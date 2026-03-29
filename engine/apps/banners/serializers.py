@@ -25,8 +25,6 @@ class PublicBannerSerializer(SafeModelSerializer):
             "order",
             "start_at",
             "end_at",
-            "created_at",
-            "updated_at",
         ]
 
     def get_image_url(self, obj: Banner) -> str | None:

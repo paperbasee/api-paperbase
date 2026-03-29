@@ -7,7 +7,10 @@ from rest_framework.views import APIView
 from config.permissions import IsStorefrontAPIKey
 from engine.apps.analytics.service import meta_conversions
 from engine.apps.products.models import Category, Product
-from engine.apps.products.serializers import CategorySerializer, ProductListSerializer
+from engine.apps.products.serializers import (
+    StorefrontCategorySerializer,
+    StorefrontProductListSerializer,
+)
 from engine.apps.products.services import annotate_storefront_product_stock, build_product_list_queryset
 from engine.apps.products.stock_signals import get_low_stock_threshold
 from engine.core.tenancy import require_api_key_store, require_resolved_store
@@ -45,7 +48,7 @@ class StorefrontSearchView(APIView):
         if trending:
             qs = build_product_list_queryset(store, {"ordering": "popularity"})
             product_rows = list(qs[:12])
-            empty["products"] = ProductListSerializer(
+            empty["products"] = StorefrontProductListSerializer(
                 product_rows, many=True, context=ctx
             ).data
             return Response(empty)
@@ -75,7 +78,7 @@ class StorefrontSearchView(APIView):
             .order_by("name", "id")[:10]
         )
         product_rows = list(prod_qs)
-        products = ProductListSerializer(
+        products = StorefrontProductListSerializer(
             product_rows, many=True, context=ctx
         ).data
 
@@ -83,7 +86,7 @@ class StorefrontSearchView(APIView):
             Category.objects.filter(store=store, is_active=True, name__icontains=q)
             .order_by("name", "id")[:8]
         )
-        categories = CategorySerializer(
+        categories = StorefrontCategorySerializer(
             cat_qs, many=True, context={"request": request}
         ).data
 

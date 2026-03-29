@@ -12,7 +12,12 @@ from rest_framework.exceptions import PermissionDenied
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser, IsStoreAdmin
 from engine.core.tenancy import get_active_store
-from engine.apps.stores.models import Store
+from engine.apps.stores.models import Store, StoreSettings
+from engine.apps.stores.social_links import (
+    coerce_social_links_patch,
+    default_social_links,
+    normalize_social_links_from_storefront_public,
+)
 from engine.apps.orders.models import Order
 from engine.apps.orders.admin_serializers import AdminOrderListSerializer
 from engine.apps.billing.feature_gate import require_feature
@@ -426,6 +431,11 @@ def _get_branding_response(request, store: Store):
     logo_url = None
     if store.logo:
         logo_url = request.build_absolute_uri(store.logo.url)
+    settings_row = getattr(store, "settings", None)
+    if settings_row is None:
+        settings_row = StoreSettings.objects.filter(store=store).first()
+    storefront_public = (settings_row.storefront_public or {}) if settings_row else {}
+    social_links = normalize_social_links_from_storefront_public(storefront_public)
     return {
         'logo_url': logo_url,
         'admin_name': store.name or 'E-commerce Store',
@@ -436,6 +446,7 @@ def _get_branding_response(request, store: Store):
         'contact_email': store.contact_email or '',
         'phone': store.phone or '',
         'address': store.address or '',
+        'social_links': social_links,
     }
 
 
@@ -475,6 +486,7 @@ class BrandingView(APIView):
                 'contact_email': '',
                 'phone': '',
                 'address': '',
+                'social_links': default_social_links(),
             })
         return Response(_get_branding_response(request, store))
 
@@ -513,4 +525,16 @@ class BrandingView(APIView):
         # Save only non-auth fields; the post_save signal is responsible for
         # syncing owner_name to User — owner_email is NOT synced (see above).
         store.save()
+
+        if "social_links" in request.data:
+            try:
+                merged_sl = coerce_social_links_patch(request.data.get("social_links"))
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=400)
+            settings_obj, _ = StoreSettings.objects.get_or_create(store=store)
+            fp = dict(settings_obj.storefront_public or {})
+            fp["social_links"] = merged_sl
+            settings_obj.storefront_public = fp
+            settings_obj.save(update_fields=["storefront_public", "updated_at"])
+
         return Response(_get_branding_response(request, store))

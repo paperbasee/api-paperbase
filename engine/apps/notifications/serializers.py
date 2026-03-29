@@ -5,14 +5,14 @@ from engine.core.serializers import SafeModelSerializer
 from .models import PlatformNotification, StorefrontCTA
 
 
-class NotificationSerializer(SafeModelSerializer):
-    """Storefront CTA rows: naming aligned with banners (cta_url, cta_label, start_at/end_at)."""
+class StorefrontNotificationSerializer(SafeModelSerializer):
+    """Storefront CTA strip: scheduling flags + UI fields (service returns is_active CTAs; client filters by window)."""
 
-    is_currently_active = serializers.BooleanField(read_only=True)
     cta_url = serializers.CharField(source="link", read_only=True, allow_null=True, allow_blank=True)
     cta_label = serializers.CharField(source="link_text", read_only=True, allow_blank=True)
     start_at = serializers.SerializerMethodField()
     end_at = serializers.SerializerMethodField()
+    is_currently_active = serializers.SerializerMethodField()
 
     class Meta:
         model = StorefrontCTA
@@ -20,15 +20,13 @@ class NotificationSerializer(SafeModelSerializer):
             "public_id",
             "cta_text",
             "notification_type",
-            "is_active",
-            "is_currently_active",
             "cta_url",
             "cta_label",
             "order",
+            "is_active",
+            "is_currently_active",
             "start_at",
             "end_at",
-            "created_at",
-            "updated_at",
         ]
 
     def get_start_at(self, obj: StorefrontCTA) -> str | None:
@@ -36,6 +34,9 @@ class NotificationSerializer(SafeModelSerializer):
 
     def get_end_at(self, obj: StorefrontCTA) -> str | None:
         return obj.end_date.isoformat() if obj.end_date else None
+
+    def get_is_currently_active(self, obj: StorefrontCTA) -> bool:
+        return bool(obj.is_currently_active)
 
 
 class ActiveSystemNotificationSerializer(SafeModelSerializer):

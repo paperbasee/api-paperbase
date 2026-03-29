@@ -23,12 +23,11 @@ class ProductImageSerializer(SafeModelSerializer):
         return absolute_media_url(obj.image, self.context.get("request"))
 
 
-class ProductVariantPublicSerializer(SafeModelSerializer):
-    """Storefront: one sellable SKU with options (color/size/etc.)."""
+class StorefrontProductVariantSerializer(SafeModelSerializer):
+    """Storefront PDP: sellable SKU with options (no internal stock_source / is_active)."""
     price = serializers.SerializerMethodField()
     options = serializers.SerializerMethodField()
     available_quantity = serializers.SerializerMethodField()
-    stock_source = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
 
     class Meta:
@@ -37,9 +36,7 @@ class ProductVariantPublicSerializer(SafeModelSerializer):
             "public_id",
             "sku",
             "available_quantity",
-            "stock_source",
             "stock_status",
-            "is_active",
             "price",
             "options",
         ]
@@ -75,9 +72,6 @@ class ProductVariantPublicSerializer(SafeModelSerializer):
     def get_available_quantity(self, obj):
         return self._quantity(obj)
 
-    def get_stock_source(self, obj):
-        return "variant_inventory"
-
     def get_stock_status(self, obj):
         return stock_status_for_quantity(
             int(self._quantity(obj)),
@@ -85,8 +79,8 @@ class ProductVariantPublicSerializer(SafeModelSerializer):
         )
 
 
-class ProductListSerializer(SafeModelSerializer):
-    """Storefront product card: snake_case, inventory-aligned totals."""
+class StorefrontProductListSerializer(SafeModelSerializer):
+    """Storefront product card: pricing, stock, brand/SKU for list UX."""
 
     image_url = serializers.SerializerMethodField()
     original_price = serializers.DecimalField(
@@ -95,10 +89,8 @@ class ProductListSerializer(SafeModelSerializer):
         read_only=True,
         allow_null=True,
     )
-    total_stock = serializers.SerializerMethodField()
-    stock_source = serializers.SerializerMethodField()
-    available_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
+    available_quantity = serializers.SerializerMethodField()
     variant_count = serializers.SerializerMethodField()
     category_public_id = serializers.CharField(source="category.public_id", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
@@ -111,7 +103,6 @@ class ProductListSerializer(SafeModelSerializer):
             "name",
             "brand",
             "sku",
-            "stock_tracking",
             "price",
             "original_price",
             "image_url",
@@ -119,10 +110,8 @@ class ProductListSerializer(SafeModelSerializer):
             "category_slug",
             "category_name",
             "slug",
-            "total_stock",
-            "stock_source",
-            "available_quantity",
             "stock_status",
+            "available_quantity",
             "variant_count",
             "extra_data",
         ]
@@ -142,7 +131,7 @@ class ProductListSerializer(SafeModelSerializer):
     def get_variant_count(self, obj):
         return self._active_variant_count(obj)
 
-    def get_total_stock(self, obj):
+    def _total_stock_for_status(self, obj) -> int:
         n = self._active_variant_count(obj)
         if n > 0:
             s = getattr(obj, "_pub_variant_stock_sum", None)
@@ -156,27 +145,18 @@ class ProductListSerializer(SafeModelSerializer):
             return int(base)
         return int(obj.stock or 0)
 
-    def get_stock_source(self, obj):
-        n = self._active_variant_count(obj)
-        if n > 0:
-            return "variant_inventory_sum"
-        base = getattr(obj, "_pub_base_inventory_qty", None)
-        if base is not None:
-            return "product_inventory"
-        return "product_stock_cache"
-
     def get_available_quantity(self, obj):
-        return self.get_total_stock(obj)
+        return int(self._total_stock_for_status(obj))
 
     def get_stock_status(self, obj):
         return stock_status_for_quantity(
-            int(self.get_total_stock(obj)),
+            int(self._total_stock_for_status(obj)),
             self._low_threshold(),
         )
 
 
-class ProductDetailSerializer(SafeModelSerializer):
-    """Storefront detail: gallery with alt text, variants, aggregated stock."""
+class StorefrontProductDetailSerializer(SafeModelSerializer):
+    """Storefront PDP: gallery, variants, product-level stock and pricing."""
 
     image_url = serializers.SerializerMethodField()
     images = serializers.SerializerMethodField()
@@ -186,12 +166,9 @@ class ProductDetailSerializer(SafeModelSerializer):
         read_only=True,
         allow_null=True,
     )
-    total_stock = serializers.SerializerMethodField()
-    stock_source = serializers.SerializerMethodField()
-    available_quantity = serializers.SerializerMethodField()
     stock_status = serializers.SerializerMethodField()
-    variant_count = serializers.SerializerMethodField()
-    variants = ProductVariantPublicSerializer(many=True, read_only=True)
+    available_quantity = serializers.SerializerMethodField()
+    variants = StorefrontProductVariantSerializer(many=True, read_only=True)
     category_public_id = serializers.CharField(source="category.public_id", read_only=True)
     category_slug = serializers.CharField(source="category.slug", read_only=True)
     category_name = serializers.CharField(source="category.name", read_only=True)
@@ -213,12 +190,8 @@ class ProductDetailSerializer(SafeModelSerializer):
             "category_slug",
             "category_name",
             "description",
-            "created_at",
-            "total_stock",
-            "stock_source",
-            "available_quantity",
             "stock_status",
-            "variant_count",
+            "available_quantity",
             "variants",
             "extra_data",
         ]
@@ -245,10 +218,7 @@ class ProductDetailSerializer(SafeModelSerializer):
             context={"request": self.context.get("request")},
         ).data
 
-    def get_variant_count(self, obj):
-        return self._active_variant_count(obj)
-
-    def get_total_stock(self, obj):
+    def _total_stock_for_status(self, obj) -> int:
         n = self._active_variant_count(obj)
         if n > 0:
             s = getattr(obj, "_pub_variant_stock_sum", None)
@@ -262,27 +232,18 @@ class ProductDetailSerializer(SafeModelSerializer):
             return int(base)
         return int(obj.stock or 0)
 
-    def get_stock_source(self, obj):
-        n = self._active_variant_count(obj)
-        if n > 0:
-            return "variant_inventory_sum"
-        base = getattr(obj, "_pub_base_inventory_qty", None)
-        if base is not None:
-            return "product_inventory"
-        return "product_stock_cache"
-
     def get_available_quantity(self, obj):
-        return self.get_total_stock(obj)
+        return int(self._total_stock_for_status(obj))
 
     def get_stock_status(self, obj):
         return stock_status_for_quantity(
-            int(self.get_total_stock(obj)),
+            int(self._total_stock_for_status(obj)),
             self._low_threshold(),
         )
 
 
-class CategorySerializer(SafeModelSerializer):
-    """Serializer for category tree nodes."""
+class StorefrontCategorySerializer(SafeModelSerializer):
+    """Storefront category tree node (active-only querysets; no is_active flag)."""
 
     image_url = serializers.SerializerMethodField()
     parent_public_id = serializers.CharField(source="parent.public_id", read_only=True, allow_null=True)
@@ -297,7 +258,6 @@ class CategorySerializer(SafeModelSerializer):
             "image_url",
             "parent_public_id",
             "order",
-            "is_active",
         ]
 
     def get_image_url(self, obj):

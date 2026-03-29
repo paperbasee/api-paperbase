@@ -19,7 +19,14 @@ from engine.core.ids import generate_public_id
 from engine.core.models import ActivityLog
 from engine.apps.support.models import SupportTicket
 from engine.apps.inventory.models import Inventory
-from engine.apps.products.models import Product, Category
+from engine.apps.products.models import (
+    Category,
+    Product,
+    ProductAttribute,
+    ProductAttributeValue,
+    ProductVariant,
+    ProductVariantAttribute,
+)
 from engine.apps.orders.models import Order, OrderItem
 from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
@@ -456,8 +463,12 @@ class PublicIdApiTests(TestCase):
             HTTP_X_STORE_PUBLIC_ID=self.store.public_id,
         )
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("social_links", resp.data)
+        sl = resp.data["social_links"]
+        self.assertIn("facebook", sl)
+        self.assertIn("website", sl)
 
-    def test_checkout_order_item_exposes_public_id(self):
+    def test_checkout_order_receipt_is_minimal_storefront_shape(self):
         cat = Category.objects.create(
             store=self.store,
             name="Test Cat",
@@ -492,11 +503,94 @@ class PublicIdApiTests(TestCase):
             HTTP_HOST="apitest.local",
         )
         self.assertEqual(resp.status_code, 201, getattr(resp, "data", None))
-        items = resp.data.get("items") or []
+        data = resp.data
+        self.assertIn("public_id", data)
+        self.assertTrue(str(data["public_id"]).startswith("ord_"))
+        self.assertIn("subtotal", data)
+        self.assertIn("shipping_cost", data)
+        self.assertIn("total", data)
+        self.assertIn("customer_name", data)
+        self.assertNotIn("pricing_snapshot", data)
+        items = data.get("items") or []
         self.assertEqual(len(items), 1)
-        oid = items[0].get("public_id")
-        self.assertIsNotNone(oid)
-        self.assertTrue(str(oid).startswith("oit_"))
+        line = items[0]
+        self.assertEqual(
+            set(line.keys()),
+            {
+                "product_name",
+                "quantity",
+                "unit_price",
+                "total_price",
+                "variant_details",
+            },
+        )
+        self.assertEqual(line["product_name"], "Test Product")
+        self.assertIsNone(line["variant_details"])
+
+    def test_checkout_order_receipt_variant_details_string(self):
+        from decimal import Decimal
+
+        cat = Category.objects.create(
+            store=self.store,
+            name="Var Cat",
+            slug="var-cat",
+        )
+        with tenant_scope_from_store(store=self.store, reason="test fixture"):
+            product = Product.objects.create(
+                store=self.store,
+                name="Variant Tee",
+                price=Decimal("99.00"),
+                category=cat,
+                stock=0,
+                status=Product.Status.ACTIVE,
+                is_active=True,
+            )
+            size_attr = ProductAttribute.objects.create(
+                store=self.store, name="Size", slug="size", order=0
+            )
+            color_attr = ProductAttribute.objects.create(
+                store=self.store, name="Color", slug="color", order=1
+            )
+            size_xl = ProductAttributeValue.objects.create(
+                store=self.store, attribute=size_attr, value="XL"
+            )
+            color_red = ProductAttributeValue.objects.create(
+                store=self.store, attribute=color_attr, value="Red"
+            )
+            variant = ProductVariant.objects.create(
+                product=product, sku="tee-xl-red", is_active=True
+            )
+            ProductVariantAttribute.objects.create(
+                variant=variant, attribute_value=size_xl
+            )
+            ProductVariantAttribute.objects.create(
+                variant=variant, attribute_value=color_red
+            )
+            Inventory.objects.create(product=product, variant=variant, quantity=5)
+        zone = _default_shipping_zone(self.store)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.api_key}")
+        resp = self.client.post(
+            "/api/v1/orders/",
+            {
+                "shipping_zone_public_id": zone.public_id,
+                "shipping_name": "Buyer",
+                "phone": "01710000000",
+                "email": "buyer@example.com",
+                "shipping_address": "Addr",
+                "products": [
+                    {
+                        "product_public_id": product.public_id,
+                        "variant_public_id": variant.public_id,
+                        "quantity": 1,
+                    }
+                ],
+            },
+            format="json",
+            HTTP_HOST="apitest.local",
+        )
+        self.assertEqual(resp.status_code, 201, getattr(resp, "data", None))
+        line = (resp.data.get("items") or [])[0]
+        self.assertEqual(line["variant_details"], "Size: XL, Color: Red")
 
     def test_switch_store_accepts_public_id(self):
         self._authenticate()

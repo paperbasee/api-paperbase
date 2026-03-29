@@ -1,9 +1,12 @@
+from datetime import timedelta
 from decimal import Decimal
 
 import pytest
+from django.utils import timezone
 from django.test import override_settings
 from rest_framework.test import APIClient
 
+from engine.apps.notifications.models import StorefrontCTA
 from engine.apps.shipping.models import ShippingMethod, ShippingRate, ShippingZone
 from engine.apps.stores.models import StoreSettings
 from engine.apps.stores.services import create_store_api_key
@@ -55,6 +58,9 @@ def test_catalog_filters_store_public_and_search():
     assert pub["modules_enabled"] == {"loyalty": True}
     assert len(pub["extra_field_schema"]) == 1
     assert pub["extra_field_schema"][0]["id"] == "fld_1"
+    assert "social_links" in pub
+    assert pub["social_links"]["facebook"] == ""
+    assert "website" in pub["social_links"]
 
     z = client.get("/api/v1/search/?q=al")
     assert z.status_code == 200
@@ -72,6 +78,10 @@ def test_catalog_filters_store_public_and_search():
 def test_shipping_zones_and_product_detail_enrichment():
     store = make_store("ShipCX")
     p = make_product(store, name="Ship Product")
+    p.brand = "ShipBrand"
+    p.sku = "SHIP-SKU-1"
+    p.original_price = Decimal("199.00")
+    p.save(update_fields=["brand", "sku", "original_price"])
     zone = ShippingZone.objects.create(
         store=store,
         name="Dhaka",
@@ -99,6 +109,18 @@ def test_shipping_zones_and_product_detail_enrichment():
     assert zones[0]["is_active"] is True
     assert "created_at" in zones[0] and "updated_at" in zones[0]
 
+    lr = client.get("/api/v1/products/")
+    assert lr.status_code == 200
+    list_body = lr.json()
+    rows = list_body.get("results", list_body)
+    row = next(r for r in rows if r["public_id"] == p.public_id)
+    for key in ("original_price", "brand", "sku", "available_quantity"):
+        assert key in row
+    assert row["brand"] == "ShipBrand"
+    assert row["sku"] == "SHIP-SKU-1"
+    assert row["original_price"] is not None
+    assert int(row["available_quantity"]) >= 0
+
     dr = client.get(f"/api/v1/products/{p.public_id}/")
     assert dr.status_code == 200
     detail = dr.json()
@@ -114,5 +136,23 @@ def test_shipping_zones_and_product_detail_enrichment():
     assert "category" not in detail
     assert detail["stock_status"] in ("in_stock", "low", "out_of_stock")
     assert "available_quantity" in detail
-    assert "stock_source" in detail
+    assert int(detail["available_quantity"]) >= 0
+    if detail["stock_status"] == "out_of_stock":
+        assert detail["available_quantity"] == 0
+    assert "stock_source" not in detail
     assert "stock" not in detail
+
+    future = timezone.now() + timedelta(days=30)
+    StorefrontCTA.objects.create(
+        store=store,
+        cta_text="Scheduled promo",
+        is_active=True,
+        start_date=future,
+    )
+    nr = client.get("/api/v1/notifications/active/")
+    assert nr.status_code == 200
+    notifs = nr.json()
+    sched = next(n for n in notifs if n.get("cta_text") == "Scheduled promo")
+    assert sched["is_active"] is True
+    assert sched["is_currently_active"] is False
+    assert sched.get("start_at") is not None

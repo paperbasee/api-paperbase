@@ -6,6 +6,24 @@ from engine.apps.shipping.models import ShippingMethod, ShippingZone
 from .models import Order, OrderItem
 
 
+def storefront_order_line_variant_details(line: OrderItem) -> str | None:
+    """Human-readable variant options for storefront receipts, e.g. 'Size: XL, Color: Red'."""
+    if not line.variant_id:
+        return None
+    variant = getattr(line, "variant", None)
+    if variant is None:
+        return None
+    rows = []
+    for link in variant.attribute_values.select_related("attribute_value__attribute").all():
+        av = link.attribute_value
+        attr = av.attribute
+        rows.append((attr.order, attr.slug or "", attr.name, av.value))
+    if not rows:
+        return None
+    rows.sort(key=lambda t: (t[0], t[1], t[2]))
+    return ", ".join(f"{name}: {value}" for _, _, name, value in rows)
+
+
 class OrderItemSerializer(SafeModelSerializer):
     product_public_id = serializers.SerializerMethodField()
     product_name = serializers.SerializerMethodField()
@@ -105,6 +123,40 @@ class OrderSerializer(SafeModelSerializer):
             "public_id": customer.public_id,
             "name": customer.name,
             "phone": customer.phone,
+        }
+
+
+class StorefrontOrderLineReceiptSerializer(serializers.BaseSerializer):
+    """Single line on a storefront receipt (no model field leakage)."""
+
+    def to_representation(self, line: OrderItem) -> dict:
+        product_name = line.product.name if line.product else "Unavailable"
+        return {
+            "product_name": product_name,
+            "quantity": line.quantity,
+            "unit_price": str(line.unit_price),
+            "total_price": str(line.line_total),
+            "variant_details": storefront_order_line_variant_details(line),
+        }
+
+
+class StorefrontOrderReceiptSerializer(serializers.BaseSerializer):
+    """Minimal storefront checkout receipt (POST /api/v1/orders/ only)."""
+
+    def to_representation(self, order: Order) -> dict:
+        line_ser = StorefrontOrderLineReceiptSerializer()
+        items_out = [line_ser.to_representation(line) for line in order.items.all()]
+        return {
+            "public_id": order.public_id,
+            "order_number": order.order_number,
+            "status": order.status,
+            "customer_name": order.shipping_name,
+            "phone": order.phone,
+            "shipping_address": order.shipping_address,
+            "items": items_out,
+            "subtotal": str(order.subtotal_after_discount),
+            "shipping_cost": str(order.shipping_cost),
+            "total": str(order.total),
         }
 
 

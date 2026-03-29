@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import Prefetch
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import status
 from rest_framework.exceptions import NotFound
@@ -14,7 +15,11 @@ from engine.core.tenancy import get_active_store, require_api_key_store
 
 from .models import Order, OrderItem
 from .order_financials import compute_line_financials
-from .serializers import OrderCreateSerializer, OrderSerializer
+from .serializers import (
+    OrderCreateSerializer,
+    OrderSerializer,
+    StorefrontOrderReceiptSerializer,
+)
 from .services import recalculate_order_totals, resolve_and_attach_customer
 from .utils import get_next_order_number
 from .stock import adjust_stock
@@ -270,9 +275,21 @@ class OrderCreateView(CreateAPIView):
 
         _notify_order_created(order)
 
+        order_for_receipt = (
+            Order.objects.filter(pk=order.pk)
+            .prefetch_related(
+                Prefetch(
+                    "items",
+                    queryset=OrderItem.objects.select_related("product", "variant").prefetch_related(
+                        "variant__attribute_values__attribute_value__attribute",
+                    ),
+                )
+            )
+            .get()
+        )
         return Response(
-            OrderSerializer(instance=order, context={'request': request}).data,
-            status=status.HTTP_201_CREATED
+            StorefrontOrderReceiptSerializer(instance=order_for_receipt).data,
+            status=status.HTTP_201_CREATED,
         )
 
 

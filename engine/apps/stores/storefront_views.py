@@ -7,6 +7,8 @@ from config.permissions import IsStorefrontAPIKey
 from engine.core.media_urls import absolute_media_url
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
+from .social_links import normalize_social_links_from_storefront_public
+
 
 def _product_only_extra_field_schema(raw):
     if not isinstance(raw, list):
@@ -53,6 +55,8 @@ class StorePublicView(APIView):
         if not isinstance(policy_urls, dict):
             policy_urls = {}
 
+        social_links = normalize_social_links_from_storefront_public(public_extra)
+
         extra_schema = []
         modules: dict = {}
         if settings_row:
@@ -85,5 +89,6 @@ class StorePublicView(APIView):
                 "refund": policy_urls.get("refund") or "",
                 "privacy": policy_urls.get("privacy") or "",
             },
+            "social_links": social_links,
         }
         return Response(payload)

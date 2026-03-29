@@ -27,9 +27,9 @@ from .models import (
     ProductVariantAttribute,
 )
 from .serializers import (
-    CategorySerializer,
-    ProductDetailSerializer,
-    ProductListSerializer,
+    StorefrontCategorySerializer,
+    StorefrontProductDetailSerializer,
+    StorefrontProductListSerializer,
 )
 from .stock_signals import get_low_stock_threshold
 
@@ -192,7 +192,7 @@ def _serialize_related_products(store, product, request):
         .select_related("category")
         .prefetch_related("images")
     ).order_by("-created_at", "id")[:4]
-    return ProductListSerializer(
+    return StorefrontProductListSerializer(
         qs,
         many=True,
         context={"request": request, "low_stock_threshold": threshold},
@@ -270,7 +270,7 @@ def get_product_detail(store, identifier: str, request):
         else:
             product = get_object_or_404(qs, slug=identifier)
         threshold = get_low_stock_threshold(store)
-        data = ProductDetailSerializer(
+        data = StorefrontProductDetailSerializer(
             product,
             context={
                 "request": request,
@@ -372,7 +372,7 @@ def build_storefront_category_tree(store, request):
         row.sort(key=lambda x: (x.order, x.name))
 
     def node(c):
-        ser = CategorySerializer(c, context={"request": request})
+        ser = StorefrontCategorySerializer(c, context={"request": request})
         out = dict(ser.data)
         out["children"] = [node(ch) for ch in by_parent.get(c.pk, [])]
         return out
@@ -424,7 +424,7 @@ def get_category_detail(store, slug: str, request):
         obj = get_object_or_404(
             Category.objects.filter(store=store, is_active=True), slug=slug
         )
-        return CategorySerializer(obj, context={"request": request}).data
+        return StorefrontCategorySerializer(obj, context={"request": request}).data
 
     return cache_service.get_or_set(key, fetcher, settings.CACHE_TTL_CATEGORIES)
 
