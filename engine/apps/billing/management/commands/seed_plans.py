@@ -8,7 +8,7 @@ from engine.apps.billing.models import Plan
 PLAN_SEED_DATA = (
     {
         "name": "Essential",
-        "price": Decimal("499.00"),
+        "price": Decimal("650.00"),
         "billing_cycle": Plan.BillingCycle.MONTHLY,
         "features": {
             "limits": {"max_stores": 1},
@@ -20,7 +20,7 @@ PLAN_SEED_DATA = (
     },
     {
         "name": "Premium",
-        "price": Decimal("999.00"),
+        "price": Decimal("950.00"),
         "billing_cycle": Plan.BillingCycle.MONTHLY,
         "features": {
             "limits": {"max_stores": 3},
