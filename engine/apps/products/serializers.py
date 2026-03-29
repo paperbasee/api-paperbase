@@ -141,9 +141,7 @@ class StorefrontProductListSerializer(SafeModelSerializer):
                 s = obj.variants.filter(is_active=True).aggregate(x=SumAgg("inventory__quantity"))["x"]
             return int(s or 0)
         base = getattr(obj, "_pub_base_inventory_qty", None)
-        if base is not None:
-            return int(base)
-        return int(obj.stock or 0)
+        return int(base or 0)
 
     def get_available_quantity(self, obj):
         return int(self._total_stock_for_status(obj))
@@ -228,9 +226,7 @@ class StorefrontProductDetailSerializer(SafeModelSerializer):
                 s = obj.variants.filter(is_active=True).aggregate(x=SumAgg("inventory__quantity"))["x"]
             return int(s or 0)
         base = getattr(obj, "_pub_base_inventory_qty", None)
-        if base is not None:
-            return int(base)
-        return int(obj.stock or 0)
+        return int(base or 0)
 
     def get_available_quantity(self, obj):
         return int(self._total_stock_for_status(obj))

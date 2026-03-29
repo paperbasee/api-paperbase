@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.db.models import Q
 
 from engine.core.ids import generate_public_id
 
@@ -41,6 +42,11 @@ class Inventory(models.Model):
             models.UniqueConstraint(
                 fields=['product', 'variant'],
                 name='inventory_product_variant_unique',
+            ),
+            models.UniqueConstraint(
+                fields=['product'],
+                condition=Q(variant__isnull=True),
+                name='unique_product_level_inventory',
             ),
         ]
 

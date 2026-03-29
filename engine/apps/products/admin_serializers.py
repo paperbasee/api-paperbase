@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from engine.apps.inventory.cache_sync import sync_product_stock_cache
+from engine.apps.inventory.models import Inventory
 from engine.core.serializers import SafeModelSerializer
 
 from .constants import MAX_PRODUCT_IMAGES_TOTAL
@@ -143,12 +145,13 @@ class AdminProductListSerializer(SafeModelSerializer):
         return obj.variants.count()
 
     def get_total_stock(self, obj):
-        """Sum variant stock when variants exist; otherwise base product.stock."""
+        """Sum variant stock when variants exist; otherwise product-level Inventory quantity."""
         n = getattr(obj, '_admin_variant_count', None)
         if n is None:
             n = obj.variants.count()
         if n == 0:
-            return obj.stock
+            inv = Inventory.objects.filter(product=obj, variant__isnull=True).values_list("quantity", flat=True).first()
+            return int(inv or 0)
         s = getattr(obj, '_admin_variant_stock_sum', None)
         if s is None:
             from django.db.models import Sum as SumAgg
@@ -219,7 +222,8 @@ class AdminProductSerializer(SafeModelSerializer):
         if n is None:
             n = obj.variants.count()
         if n == 0:
-            return obj.stock
+            inv = Inventory.objects.filter(product=obj, variant__isnull=True).values_list("quantity", flat=True).first()
+            return int(inv or 0)
         s = getattr(obj, '_admin_variant_stock_sum', None)
         if s is None:
             from django.db.models import Sum as SumAgg
@@ -555,6 +559,26 @@ class AdminProductVariantSerializer(SafeModelSerializer):
         attr_values = self._resolve_attribute_values(public_ids)
         for av in attr_values:
             ProductVariantAttribute.objects.create(variant=variant, attribute_value=av)
+        is_first_variant = (
+            ProductVariant.objects.filter(product_id=variant.product_id).count() == 1
+        )
+        transferred_qty = 0
+        if is_first_variant:
+            old_inv = Inventory.objects.filter(
+                product=variant.product, variant__isnull=True
+            ).first()
+            if old_inv:
+                transferred_qty = old_inv.quantity
+                Inventory.objects.filter(
+                    product=variant.product, variant__isnull=True
+                ).delete()
+        Inventory.objects.get_or_create(
+            product=variant.product,
+            variant=variant,
+            defaults={"quantity": transferred_qty},
+        )
+        if is_first_variant:
+            sync_product_stock_cache(int(variant.product.store_id))
         return variant
 
     def update(self, instance, validated_data):
