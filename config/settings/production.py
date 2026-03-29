@@ -115,10 +115,12 @@ CELERY_BROKER_URL = _redis_url
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL  # noqa: F405
 CELERY_TASK_ALWAYS_EAGER = False
 
-CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGINS = env_list("CORS_ALLOWED_ORIGINS")  # noqa: F405
-if not CORS_ALLOWED_ORIGINS:
-    raise ImproperlyConfigured("CORS_ALLOWED_ORIGINS must be set in production.")
+# CORS: allow any browser Origin so store-owner frontends (localhost, Vercel, custom
+# domains) work without maintaining a per-tenant allowlist. Security remains JWT +
+# publishable API key + tenant middleware; do not use Origin for authorization.
+# Do not set CORS_ALLOW_CREDENTIALS (keep default False); wildcard ACAO is incompatible
+# with credentialed cross-origin requests in browsers.
+CORS_ALLOW_ALL_ORIGINS = True
 
 # If running behind a reverse proxy/ingress that terminates TLS, let Django trust
 # the forwarded scheme header (only when explicitly enabled).
