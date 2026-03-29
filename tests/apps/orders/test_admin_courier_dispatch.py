@@ -33,13 +33,14 @@ class AdminCourierDispatchTests(TestCase):
             "buyer@example.com",
             status=Order.Status.CONFIRMED,
             shipping_zone=self.zone,
+            district="Dhaka",
+            shipping_address="Test Address, Dhanmondi",
         )
         Courier.objects.create(
             store=self.store,
             provider=Courier.Provider.STEADFAST,
             api_key_encrypted=encrypt_value("api"),
             secret_key_encrypted=encrypt_value("secret"),
-            access_token_encrypted=encrypt_value(""),
             is_active=True,
         )
 

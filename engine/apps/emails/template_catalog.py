@@ -50,12 +50,18 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "<p>Order: {{ order_number }}</p>"
             "<p>Customer: {{ customer_name }} ({{ customer_email }})</p>"
             "<p>Total: {{ total }} {{ currency }}</p>"
+            "<hr style=\"border:none;border-top:1px solid #e5e5e5;margin:16px 0;\" />"
+            "<div style=\"white-space:pre-line;font-family:ui-monospace,monospace;font-size:13px;\">"
+            "{{ order_summary }}"
+            "</div>"
         ),
         "text_body": (
             "Store: {{ store_name }}\n"
             "Order: {{ order_number }}\n"
             "Customer: {{ customer_name }} ({{ customer_email }})\n"
             "Total: {{ total }} {{ currency }}\n"
+            "\n"
+            "{{ order_summary }}\n"
         ),
     },
     ORDER_CONFIRMED: {
@@ -70,6 +76,10 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "{% if courier_consignment_id %}"
             "<p>Tracking / consignment ID: {{ courier_consignment_id }}</p>"
             "{% endif %}"
+            "<hr style=\"border:none;border-top:1px solid #e5e5e5;margin:16px 0;\" />"
+            "<div style=\"white-space:pre-line;font-family:ui-monospace,monospace;font-size:13px;\">"
+            "{{ order_summary }}"
+            "</div>"
         ),
         "text_body": (
             "Hello {{ customer_name|default:'Customer' }},\n"
@@ -77,6 +87,8 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "Total: {{ total }} {{ currency }}\n"
             "{% if courier_provider_label %}Courier: {{ courier_provider_label }}\n{% endif %}"
             "{% if courier_consignment_id %}Consignment ID: {{ courier_consignment_id }}\n{% endif %}"
+            "\n"
+            "{{ order_summary }}\n"
         ),
     },
     SUBSCRIPTION_PAYMENT: {

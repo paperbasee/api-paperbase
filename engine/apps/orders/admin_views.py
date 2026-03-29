@@ -181,6 +181,7 @@ class AdminOrderViewSet(
             qs = qs.filter(
                 Q(order_number__icontains=search)
                 | Q(public_id__icontains=search)
+                | Q(courier_consignment_id__icontains=search)
                 | Q(shipping_name__icontains=search)
                 | Q(phone__icontains=search)
                 | Q(email__icontains=search)

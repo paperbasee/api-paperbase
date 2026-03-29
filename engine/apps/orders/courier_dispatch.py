@@ -43,13 +43,11 @@ def resolve_courier(*, store, order: Order) -> Courier:
 
 
 def run_courier_api(order: Order, courier: Courier) -> dict:
-    """Call Pathao or Steadfast create_order; returns dict with consignment_id, raw_response."""
-    if courier.provider == Courier.Provider.PATHAO:
-        from engine.apps.couriers.services import pathao_service as svc
-    elif courier.provider == Courier.Provider.STEADFAST:
-        from engine.apps.couriers.services import steadfast_service as svc
-    else:
+    """Call Steadfast create_order; returns dict with consignment_id, raw_response."""
+    if courier.provider != Courier.Provider.STEADFAST:
         raise ValidationError({"detail": f"Unsupported courier provider: {courier.provider}"})
+    from engine.apps.couriers.services import steadfast_service as svc
+
     try:
         return svc.create_order(order, courier)
     except http_requests.HTTPError as exc:
@@ -57,6 +55,8 @@ def run_courier_api(order: Order, courier: Courier) -> dict:
         raise ValidationError(
             {"detail": f"Courier API error: {exc.response.text if exc.response else str(exc)}"}
         ) from exc
+    except ValidationError:
+        raise
     except Exception as exc:
         logger.exception("Unexpected courier error for order %s", order.order_number)
         raise ValidationError({"detail": f"Courier error: {str(exc)}"}) from exc

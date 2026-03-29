@@ -95,6 +95,18 @@ class NotifyStoreNewOrderTests(TestCase):
 
     @patch("engine.apps.emails.triggers.has_feature", return_value=True)
     @patch("engine.apps.emails.tasks.send_email_task.delay")
+    def test_order_received_context_includes_order_summary(self, mock_delay, _mock_hf):
+        store = _store_with_owner_and_settings()
+        order = _order(store, district="Dhaka", shipping_cost=Decimal("15.00"))
+        notify_store_new_order(order)
+        ctx = mock_delay.call_args[0][2]
+        self.assertIn("order_summary", ctx)
+        self.assertIn("District: Dhaka", ctx["order_summary"])
+        self.assertIn("Delivery charge:", ctx["order_summary"])
+        self.assertIn(order.order_number, ctx["order_summary"])
+
+    @patch("engine.apps.emails.triggers.has_feature", return_value=True)
+    @patch("engine.apps.emails.tasks.send_email_task.delay")
     def test_uses_contact_email_when_set(self, mock_delay, _mock_hf):
         store = _store_with_owner_and_settings()
         store.contact_email = "store@example.com"

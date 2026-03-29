@@ -5,10 +5,9 @@ from engine.core.ids import generate_public_id
 
 
 class Courier(models.Model):
-    """Third-party courier integration credentials scoped to a store."""
+    """Steadfast (Packzy) courier credentials scoped to a store."""
 
     class Provider(models.TextChoices):
-        PATHAO = "pathao", "Pathao"
         STEADFAST = "steadfast", "Steadfast"
 
     store = models.ForeignKey(
@@ -32,13 +31,6 @@ class Courier(models.Model):
         default="",
         help_text="Fernet-encrypted secret key (Steadfast).",
     )
-    access_token_encrypted = models.TextField(
-        blank=True,
-        default="",
-        help_text="Fernet-encrypted access/bearer token (Pathao).",
-    )
-    refresh_token = models.TextField(blank=True, default="")
-    token_expires_at = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

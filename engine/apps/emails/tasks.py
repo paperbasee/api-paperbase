@@ -6,6 +6,8 @@ from django.utils import timezone
 from config.celery import app
 from engine.core.tenant_execution import system_scope
 
+from engine.apps.orders.order_summary_formatting import build_order_email_context
+
 from .constants import ORDER_CONFIRMED
 from .services import send_email
 
@@ -24,6 +26,7 @@ def send_order_email_task(order_public_id: str) -> None:
             order = (
                 Order.objects.select_for_update()
                 .select_related("store")
+                .prefetch_related("items__product", "items__variant")
                 .filter(public_id=order_public_id)
                 .first()
             )
@@ -44,20 +47,18 @@ def send_order_email_task(order_public_id: str) -> None:
                 provider_code, provider_code.replace("_", " ").title() if provider_code else ""
             )
             consignment = (order.courier_consignment_id or "").strip()
-            send_email(
-                ORDER_CONFIRMED,
-                customer_email,
-                {
-                    "store_name": store.name,
-                    "order_number": order.order_number,
-                    "customer_name": (order.shipping_name or "").strip(),
-                    "total": str(order.total),
-                    "currency": store.currency,
-                    "courier_provider": provider_code,
-                    "courier_provider_label": provider_label,
-                    "courier_consignment_id": consignment,
-                },
-            )
+            ctx = {
+                "store_name": store.name,
+                "order_number": order.order_number,
+                "customer_name": (order.shipping_name or "").strip(),
+                "total": str(order.total),
+                "currency": store.currency,
+                "courier_provider": provider_code,
+                "courier_provider_label": provider_label,
+                "courier_consignment_id": consignment,
+            }
+            ctx.update(build_order_email_context(order))
+            send_email(ORDER_CONFIRMED, customer_email, ctx)
             order.customer_confirmation_sent_at = timezone.now()
             order.save(update_fields=["customer_confirmation_sent_at"])
 

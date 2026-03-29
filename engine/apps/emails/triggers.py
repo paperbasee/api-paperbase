@@ -10,6 +10,7 @@ from django.utils import timezone
 from engine.apps.billing.feature_gate import has_feature
 from engine.apps.billing.models import Subscription
 from engine.apps.stores.models import StoreSettings
+from engine.apps.orders.order_summary_formatting import build_order_email_context
 from engine.apps.stores.services import (
     ORDER_EMAIL_NOTIFICATIONS_FEATURE,
     get_store_owner_user,
@@ -52,19 +53,17 @@ def notify_store_new_order(order) -> None:
     if not to_email:
         return
     owner_email = (store.owner_email or "").strip()
-    send_email_task.delay(
-        ORDER_RECEIVED,
-        to_email,
-        {
-            "store_name": store.name,
-            "order_number": order.order_number,
-            "customer_email": (order.email or "").strip(),
-            "customer_name": (order.shipping_name or "").strip(),
-            "total": str(order.total),
-            "currency": store.currency,
-            "store_contact_email": (store.contact_email or "").strip() or owner_email,
-        },
-    )
+    ctx = {
+        "store_name": store.name,
+        "order_number": order.order_number,
+        "customer_email": (order.email or "").strip(),
+        "customer_name": (order.shipping_name or "").strip(),
+        "total": str(order.total),
+        "currency": store.currency,
+        "store_contact_email": (store.contact_email or "").strip() or owner_email,
+    }
+    ctx.update(build_order_email_context(order))
+    send_email_task.delay(ORDER_RECEIVED, to_email, ctx)
 
 
 def should_send_customer_confirmation_order_email(order) -> bool:
