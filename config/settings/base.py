@@ -220,10 +220,7 @@ AUTH_USER_MODEL = "accounts.User"
 FIELD_ENCRYPTION_KEY = os.getenv("FIELD_ENCRYPTION_KEY", "")
 
 EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
-DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "noreply@mail.paperbase.me")
-SUPPORT_FROM_EMAIL = os.getenv("SUPPORT_FROM_EMAIL", "noreply@mail.paperbase.me")
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 CELERY_ACCEPT_CONTENT = ["json"]
