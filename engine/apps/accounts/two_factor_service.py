@@ -18,6 +18,7 @@ from engine.apps.accounts.models import (
 from engine.apps.emails.constants import TWO_FA_RECOVERY
 from engine.apps.emails.tasks import send_email_task
 from engine.core.rate_limit_service import enforce_rate_limit, record_action
+from engine.core.tenancy import get_active_store
 
 
 TWO_FACTOR_OTP_DIGITS = 6
@@ -32,10 +33,27 @@ def get_or_create_profile(user):
     return profile
 
 
-def build_provisioning(user, secret: str):
-    issuer = getattr(settings, "TWO_FACTOR_ISSUER_NAME", "Gadzilla")
+def resolve_two_factor_issuer(request) -> str:
+    """
+    Use the authenticated user's active store name when available (dashboard JWT/header).
+    Optional settings.TWO_FACTOR_ISSUER_NAME overrides when no store context applies.
+    """
+    ctx = get_active_store(request)
+    if ctx.store and ctx.membership:
+        name = (ctx.store.name or "").strip()
+        if name:
+            return name
+    configured = getattr(settings, "TWO_FACTOR_ISSUER_NAME", None)
+    if configured:
+        s = str(configured).strip()
+        if s:
+            return s
+    return "Akkho"
+
+
+def build_provisioning(user, secret: str, issuer_name: str):
     totp = pyotp.TOTP(secret, digits=TWO_FACTOR_OTP_DIGITS)
-    uri = totp.provisioning_uri(name=user.email, issuer_name=issuer)
+    uri = totp.provisioning_uri(name=user.email, issuer_name=issuer_name)
 
     image = qrcode.make(uri)
     stream = io.BytesIO()
@@ -45,12 +63,12 @@ def build_provisioning(user, secret: str):
     return uri, qr_data_url
 
 
-def begin_setup(user):
+def begin_setup(user, *, issuer_name: str):
     profile = get_or_create_profile(user)
     secret = pyotp.random_base32()
     profile.pending_secret = secret
     profile.save(update_fields=["pending_secret_encrypted", "updated_at"])
-    uri, qr_data_url = build_provisioning(user, secret)
+    uri, qr_data_url = build_provisioning(user, secret, issuer_name)
     return {"secret": secret, "provisioning_uri": uri, "qr_code": qr_data_url}
 
 

@@ -19,6 +19,7 @@ from config.permissions import IsVerifiedUser
 from .models import UserTwoFactor
 from .two_factor_service import (
     begin_setup,
+    resolve_two_factor_issuer,
     create_challenge,
     get_or_create_profile,
     request_recovery_code,
@@ -345,7 +346,7 @@ class TwoFactorSetupView(views.APIView):
         profile = get_or_create_profile(request.user)
         if profile.is_enabled:
             return Response({"detail": "2FA is already enabled."}, status=status.HTTP_400_BAD_REQUEST)
-        payload = begin_setup(request.user)
+        payload = begin_setup(request.user, issuer_name=resolve_two_factor_issuer(request))
         return Response(
             {
                 "is_enabled": False,

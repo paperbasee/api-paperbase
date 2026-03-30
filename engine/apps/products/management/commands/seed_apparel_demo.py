@@ -306,7 +306,7 @@ class Command(BaseCommand):
             p = Product(
                 store=store,
                 name=SHIRT_NAME,
-                brand="Gadzilla Essentials",
+                brand="Demo Essentials",
                 price=Decimal("24.99"),
                 original_price=Decimal("32.00"),
                 category=category,
@@ -367,7 +367,7 @@ class Command(BaseCommand):
             p = Product(
                 store=store,
                 name=PANT_NAME,
-                brand="Gadzilla Essentials",
+                brand="Demo Essentials",
                 price=Decimal("59.99"),
                 original_price=Decimal("78.00"),
                 category=category,
