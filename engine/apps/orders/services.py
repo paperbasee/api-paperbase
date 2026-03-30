@@ -17,6 +17,7 @@ from engine.apps.orders.order_financials import (
 from engine.apps.orders.stock import adjust_stock
 from engine.apps.products.models import Product, ProductVariant
 from engine.apps.stores.models import Store
+from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 
 
 def _normalize_phone(phone: str) -> str:
@@ -275,4 +276,5 @@ def apply_order_status_change(
 
         locked.status = to_status
         locked.save(update_fields=["status", "updated_at"])
+        invalidate_notifications_and_dashboard_caches(locked.store.public_id)
         return locked

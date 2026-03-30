@@ -8,17 +8,38 @@ import secrets
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.text import slugify
 
 from engine.apps.billing.feature_gate import has_feature
 from engine.core import cache_service
+from engine.core.request_context import get_store_settings_request_cache
 
 from .models import Store, StoreApiKey, StoreMembership, StoreSettings
 
 User = get_user_model()
 
 ORDER_EMAIL_NOTIFICATIONS_FEATURE = "order_email_notifications"
+
+
+def get_request_store_settings_row(
+    request: HttpRequest, store: Store
+) -> StoreSettings | None:
+    """At most one StoreSettings DB read per store per request (ContextVar cache)."""
+    cache = get_store_settings_request_cache()
+    if store.pk in cache:
+        return cache[store.pk]
+    row = StoreSettings.objects.filter(store_id=store.pk).only("storefront_public").first()
+    cache[store.pk] = row
+    return row
+
+
+def set_request_store_settings_row(
+    request: HttpRequest, store: Store, row: StoreSettings | None
+) -> None:
+    """Update request-scoped settings cache (e.g. after PATCH)."""
+    get_store_settings_request_cache()[store.pk] = row
 
 
 def normalize_store_code_base_from_name(name: str) -> str:

@@ -6,3 +6,6 @@ class CustomersConfig(AppConfig):
     name = 'engine.apps.customers'
     label = 'customers'
     verbose_name = 'Customers'
+
+    def ready(self):
+        import engine.apps.customers.signals  # noqa: F401

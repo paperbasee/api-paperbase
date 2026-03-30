@@ -129,6 +129,8 @@ class AdminOrderItemSerializer(SafeModelSerializer):
 
 
 class AdminOrderListSerializer(SafeModelSerializer):
+    # List/detail callers must annotate queryset with items_count=Count("items")
+    # (see AdminOrderViewSet.get_queryset and DashboardStatsView); avoids N+1.
     items_count = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
 
@@ -146,7 +148,7 @@ class AdminOrderListSerializer(SafeModelSerializer):
         ]
 
     def get_items_count(self, obj):
-        return obj.items.count()
+        return obj.items_count
 
     def get_customer(self, obj):
         customer = getattr(obj, "customer", None)

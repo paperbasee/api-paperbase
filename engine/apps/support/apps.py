@@ -6,3 +6,6 @@ class SupportConfig(AppConfig):
     name = "engine.apps.support"
     label = "support"
     verbose_name = "Support"
+
+    def ready(self):
+        import engine.apps.support.signals  # noqa: F401

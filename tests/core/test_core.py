@@ -1148,6 +1148,43 @@ class CrossTenantAdminIsolationTests(TestCase):
         self.assertIn(self.order_a.public_id, ids)
         self.assertNotIn(self.order_b.public_id, ids)
 
+    def test_admin_notifications_summary_isolated_by_store(self):
+        """Dashboard notification summary must only include active-store orders and tickets."""
+        from config.admin_notifications_summary import (
+            MERGED_NOTIFICATION_ITEMS_MAX,
+            RECENT_NOTIFICATION_LIMIT,
+        )
+
+        self._auth_as(self.admin_a, self.store_a)
+        resp = self.client.get("/api/v1/admin/notifications/summary/")
+        self.assertEqual(resp.status_code, 200)
+        order_ids = {o["public_id"] for o in resp.data["recent_orders"]}
+        ticket_ids = {t["public_id"] for t in resp.data["recent_tickets"]}
+        self.assertIn(self.order_a.public_id, order_ids)
+        self.assertNotIn(self.order_b.public_id, order_ids)
+        self.assertIn(self.ticket_a.public_id, ticket_ids)
+        self.assertNotIn(self.ticket_b.public_id, ticket_ids)
+        self.assertIn("new_orders_count", resp.data)
+        self.assertIn("pending_tickets_count", resp.data)
+        self.assertIn("items", resp.data)
+        self.assertIn("unread_count", resp.data)
+        self.assertLessEqual(len(resp.data["recent_orders"]), RECENT_NOTIFICATION_LIMIT)
+        self.assertLessEqual(len(resp.data["recent_tickets"]), RECENT_NOTIFICATION_LIMIT)
+        self.assertLessEqual(len(resp.data["items"]), MERGED_NOTIFICATION_ITEMS_MAX)
+        self.assertEqual(
+            resp.data["unread_count"],
+            resp.data["new_orders_count"] + resp.data["pending_tickets_count"],
+        )
+        for item in resp.data["items"]:
+            self.assertIn("id", item)
+            self.assertIn("type", item)
+            self.assertIn("title", item)
+            self.assertIn("timestamp", item)
+            self.assertIn("read", item)
+            self.assertFalse(item["read"])
+        # Store A has recent orders and tickets; merged feed should surface at least one.
+        self.assertGreater(len(resp.data["items"]), 0)
+
     def test_admin_order_detail_cross_store_denied(self):
         """Store A admin fetching store B's order UUID returns 404."""
         self._auth_as(self.admin_a, self.store_a)

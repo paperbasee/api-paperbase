@@ -11,6 +11,7 @@ from engine.apps.products.models import Category, Product, ProductImage
 from engine.apps.banners.models import Banner
 from engine.apps.support.models import SupportTicketAttachment
 from engine.apps.stores.models import Store, StoreDeletionJob
+from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 from engine.core.tenant_execution import system_scope
 
 
@@ -66,6 +67,10 @@ def hard_delete_store(job_public_id: str) -> None:
             job.error_message = ""
             job.save(update_fields=["status", "current_step", "error_message"])
 
+            store_public_id = store.public_id
+            # QuerySet.delete() does not emit per-row signals; clear summary/overview caches.
+            invalidate_notifications_and_dashboard_caches(store_public_id)
+
             # Step 1: Remove orders (and their dependent rows).
             Order.objects.filter(store_id=store.id).delete()
 
@@ -119,6 +124,7 @@ def hard_delete_store(job_public_id: str) -> None:
             _delete_storage_files(attachment_file_names)
 
             # Final DB deletion: store + remaining store-scoped data via cascades.
+            invalidate_notifications_and_dashboard_caches(store_public_id)
             with transaction.atomic():
                 Store.objects.filter(id=store.id).delete()
 

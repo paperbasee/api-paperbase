@@ -1,7 +1,7 @@
 import logging
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import serializers, viewsets, mixins, status
 from rest_framework.decorators import action
@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
+from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 from engine.core.tenancy import get_active_store
 from engine.apps.emails.triggers import (
     queue_customer_order_dispatched_email,
@@ -188,7 +189,9 @@ class AdminOrderViewSet(
                 | Q(customer__name__icontains=search)
             )
 
-        return qs
+        # Explicit stable ordering for paginator (avoids UnorderedObjectListWarning;
+        # ties on created_at are broken by primary key).
+        return qs.annotate(items_count=Count("items")).order_by("-created_at", "id")
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -401,7 +404,9 @@ class AdminOrderViewSet(
     def perform_destroy(self, instance):
         public_id = instance.public_id
         order_number = getattr(instance, "order_number", "")
+        store_public_id = instance.store.public_id
         super().perform_destroy(instance)
+        invalidate_notifications_and_dashboard_caches(store_public_id)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,

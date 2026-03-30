@@ -92,9 +92,21 @@ MEDIA_URL = f"{R2_PUBLIC_URL}/media/"
 STATIC_URL = f"{R2_PUBLIC_URL}/static/"
 
 # Database
-DATABASES = {
-    "default": dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600)  # noqa: F405
-}
+# Direct Postgres: conn_max_age=600 reuses connections within workers.
+# PgBouncer (transaction pooling): set DATABASE_PGBOUNCER=1 so Django releases
+# the server connection after each request (CONN_MAX_AGE=0) and disables
+# server-side cursors, which are unsafe across pooled transactions.
+_default_db = dj_database_url.parse(os.environ["DATABASE_URL"], conn_max_age=600)  # noqa: F405
+if env_bool("DATABASE_PGBOUNCER", False):  # noqa: F405
+    _default_db["CONN_MAX_AGE"] = 0
+    _default_db["CONN_HEALTH_CHECKS"] = True
+    _default_db["ATOMIC_REQUESTS"] = False
+    _db_opts = dict(_default_db.get("OPTIONS") or {})
+    _db_opts["disable_server_side_cursors"] = True
+    _default_db["OPTIONS"] = _db_opts
+else:
+    _default_db["CONN_HEALTH_CHECKS"] = True
+DATABASES = {"default": _default_db}
 
 _redis_url = _require_env("REDIS_URL")
 CHANNEL_LAYERS = {

@@ -1,6 +1,7 @@
 from decimal import Decimal
 from datetime import date, timedelta
 
+from django.core.cache import cache
 from django.db.models import Sum, Count, Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
 from django.utils import timezone
@@ -11,8 +12,20 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.exceptions import PermissionDenied
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser, IsStoreAdmin
+from engine.core.admin_dashboard_cache import (
+    dashboard_live_overview_cache_key,
+    dashboard_stats_cache_key,
+)
+from engine.core.request_context import (
+    get_branding_request_cache,
+    get_dashboard_store_from_request,
+)
 from engine.core.tenancy import get_active_store
 from engine.apps.stores.models import Store, StoreSettings
+from engine.apps.stores.services import (
+    get_request_store_settings_row,
+    set_request_store_settings_row,
+)
 from engine.apps.stores.social_links import (
     coerce_social_links_patch,
     default_social_links,
@@ -27,13 +40,18 @@ from engine.apps.customers.models import Customer
 from engine.apps.notifications.models import StorefrontCTA
 from engine.apps.analytics.models import StoreDashboardStatsSnapshot
 
+# Tenant-scoped cache for GET admin/stats/overview/ final JSON only.
+DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS = 45
+DASHBOARD_STATS_CACHE_TTL_HISTORICAL_SECONDS = 600
+# Normalized day-bucket overview: short TTL (includes "today" in canonical window).
+DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS = 20
+
 
 class DashboardStatsView(APIView):
     permission_classes = [DenyAPIKeyAccess, IsAdminUser]
 
     def get(self, request):
-        ctx = get_active_store(request)
-        store = ctx.store
+        store = get_dashboard_store_from_request(request)
         if not store:
             raise PermissionDenied("No active store resolved.")
 
@@ -64,7 +82,11 @@ class DashboardStatsView(APIView):
             oos_count=Count('id', filter=Q(stock=0, is_active=True)),
         )
 
-        recent_orders = order_qs.prefetch_related('items__product')[:10]
+        recent_orders = (
+            order_qs.annotate(items_count=Count("items"))
+            .select_related("customer")
+            .order_by("-created_at")[:10]
+        )
 
         return Response({
             'orders': {
@@ -236,25 +258,68 @@ class DashboardStatsOverviewView(APIView):
         start_date, end_date = self._parse_date_range(request)
         bucket = (request.query_params.get("bucket", "day") or "day").lower()
         bucket_func = self._get_bucket_func(bucket)
+        explicit_range = bool(
+            request.query_params.get("start_date")
+            or request.query_params.get("end_date")
+        )
 
-        ctx = get_active_store(request)
-        store = ctx.store
+        store = get_dashboard_store_from_request(request)
         if not store:
             raise PermissionDenied("No active store resolved.")
-        if not store:
-            return Response({"summary": {}, "series": [], "meta": {"start_date": start_date.isoformat(), "end_date": end_date.isoformat(), "bucket": bucket}})
 
-        existing = StoreDashboardStatsSnapshot.objects.filter(
-            store=store,
-            start_date=start_date,
-            end_date=end_date,
-            bucket=bucket,
-        ).first()
-        # Ranges that include "today" are live and should not be served from a
-        # stale snapshot indefinitely because underlying records can change.
-        is_live_range = end_date >= timezone.localdate()
-        if existing and existing.payload and not is_live_range:
-            return Response(existing.payload)
+        today = timezone.localdate()
+        is_live_range = end_date >= today
+        default_start = today - timedelta(days=29)
+        default_end = today
+        uses_default_range = (
+            not explicit_range
+            and start_date == default_start
+            and end_date == default_end
+        )
+
+        # Default overview: one final cached payload per bucket (no post-cache slicing).
+        if uses_default_range and bucket in ("day", "week", "month"):
+            live_key = dashboard_live_overview_cache_key(store.public_id, bucket)
+            cached = cache.get(live_key)
+            if cached is not None:
+                return Response(cached)
+            payload = self._compute_payload(
+                store=store,
+                start_date=start_date,
+                end_date=end_date,
+                bucket=bucket,
+                bucket_func=bucket_func,
+            )
+            cache.set(live_key, payload, DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS)
+            return Response(payload)
+
+        cache_key = dashboard_stats_cache_key(
+            store.public_id,
+            start_date.isoformat(),
+            end_date.isoformat(),
+            bucket,
+        )
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return Response(cached)
+
+        cache_ttl = (
+            DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS
+            if is_live_range
+            else DASHBOARD_STATS_CACHE_TTL_HISTORICAL_SECONDS
+        )
+
+        if bucket in ("week", "month") and not is_live_range:
+            existing = StoreDashboardStatsSnapshot.objects.filter(
+                store=store,
+                start_date=start_date,
+                end_date=end_date,
+                bucket=bucket,
+            ).first()
+            if existing and existing.payload:
+                payload = existing.payload
+                cache.set(cache_key, payload, cache_ttl)
+                return Response(payload)
 
         payload = self._compute_payload(
             store=store,
@@ -264,13 +329,21 @@ class DashboardStatsOverviewView(APIView):
             bucket_func=bucket_func,
         )
 
-        StoreDashboardStatsSnapshot.objects.update_or_create(
-            store=store,
-            start_date=start_date,
-            end_date=end_date,
-            bucket=bucket,
-            defaults={"payload": payload},
+        should_snapshot = (
+            not is_live_range
+            and bucket in ("week", "month")
+            and not explicit_range
         )
+        if should_snapshot:
+            StoreDashboardStatsSnapshot.objects.update_or_create(
+                store=store,
+                start_date=start_date,
+                end_date=end_date,
+                bucket=bucket,
+                defaults={"payload": payload},
+            )
+
+        cache.set(cache_key, payload, cache_ttl)
         return Response(payload)
 
 
@@ -428,15 +501,18 @@ class DashboardAnalyticsView(APIView):
 
 def _get_branding_response(request, store: Store):
     """Build branding JSON for API response from Store."""
+    branding = get_branding_request_cache()
+    cached = branding.get(store.public_id)
+    if cached is not None:
+        return cached
+
     logo_url = None
     if store.logo:
         logo_url = request.build_absolute_uri(store.logo.url)
-    settings_row = getattr(store, "settings", None)
-    if settings_row is None:
-        settings_row = StoreSettings.objects.filter(store=store).first()
+    settings_row = get_request_store_settings_row(request, store)
     storefront_public = (settings_row.storefront_public or {}) if settings_row else {}
     social_links = normalize_social_links_from_storefront_public(storefront_public)
-    return {
+    data = {
         'logo_url': logo_url,
         'admin_name': store.name or 'E-commerce Store',
         'owner_name': store.owner_name or '',
@@ -448,6 +524,8 @@ def _get_branding_response(request, store: Store):
         'address': store.address or '',
         'social_links': social_links,
     }
+    branding[store.public_id] = data
+    return data
 
 
 class BrandingView(APIView):
@@ -465,12 +543,12 @@ class BrandingView(APIView):
         return [DenyAPIKeyAccess(), IsAdminUser()]
 
     def _get_store(self, request):
-        ctx = get_active_store(request)
-        if not ctx.store:
+        store = get_dashboard_store_from_request(request)
+        if not store:
             raise PermissionDenied(
                 "No active store resolved. Send the X-Store-ID header or re-login."
             )
-        return ctx.store
+        return store
 
     def get(self, request):
         try:
@@ -536,5 +614,7 @@ class BrandingView(APIView):
             fp["social_links"] = merged_sl
             settings_obj.storefront_public = fp
             settings_obj.save(update_fields=["storefront_public", "updated_at"])
+            set_request_store_settings_row(request, store, settings_obj)
 
+        get_branding_request_cache().pop(store.public_id, None)
         return Response(_get_branding_response(request, store))

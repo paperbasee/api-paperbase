@@ -30,6 +30,7 @@ from .admin_api import (
     BrandingView,
     DashboardAnalyticsView,
 )
+from .admin_notifications_summary import AdminNotificationsSummaryView
 from engine.core.search_views import UnifiedSearchView
 
 router = DefaultRouter()
@@ -64,6 +65,11 @@ urlpatterns = [
         "search/",
         UnifiedSearchView.as_view(),
         name="admin-unified-search",
+    ),
+    path(
+        "notifications/summary/",
+        AdminNotificationsSummaryView.as_view(),
+        name="admin-notifications-summary",
     ),
     path('stats/', DashboardStatsView.as_view(), name='admin-dashboard-stats'),
     path('stats/overview/', DashboardStatsOverviewView.as_view(), name='admin-dashboard-stats-overview'),

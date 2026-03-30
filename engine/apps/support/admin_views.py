@@ -3,6 +3,7 @@ from django.db.models import Q
 
 from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
+from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
@@ -55,7 +56,9 @@ class AdminSupportTicketViewSet(
     def perform_destroy(self, instance):
         public_id = instance.public_id
         subject = getattr(instance, "subject", "")
+        store_public_id = instance.store.public_id
         super().perform_destroy(instance)
+        invalidate_notifications_and_dashboard_caches(store_public_id)
         log_activity(
             request=self.request,
             action=ActivityLog.Action.DELETE,
