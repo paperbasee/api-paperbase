@@ -35,6 +35,7 @@ from .admin_serializers import (
 from .category_tree import descendant_public_ids_including_self
 from .product_search import filter_products_by_prioritized_search
 from .services import (
+    assert_product_creation_allowed,
     build_admin_category_tree,
     invalidate_category_cache,
     invalidate_product_cache,
@@ -153,6 +154,7 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
                     )
                 }
             )
+        assert_product_creation_allowed(self.request.user, store)
         instance = serializer.save(store=store)
         Inventory.objects.get_or_create(
             product=instance,

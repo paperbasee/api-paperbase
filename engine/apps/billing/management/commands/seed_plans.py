@@ -11,7 +11,7 @@ PLAN_SEED_DATA = (
         "price": Decimal("650.00"),
         "billing_cycle": Plan.BillingCycle.MONTHLY,
         "features": {
-            "limits": {"max_stores": 1},
+            "limits": {"max_stores": 1, "max_products": 100},
             "features": {
                 "advanced_analytics": False,
                 "order_email_notifications": False,
@@ -23,7 +23,7 @@ PLAN_SEED_DATA = (
         "price": Decimal("950.00"),
         "billing_cycle": Plan.BillingCycle.MONTHLY,
         "features": {
-            "limits": {"max_stores": 3},
+            "limits": {"max_stores": 3, "max_products": 200},
             "features": {
                 "advanced_analytics": True,
                 "order_email_notifications": True,

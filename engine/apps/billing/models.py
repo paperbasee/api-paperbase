@@ -28,7 +28,7 @@ class Plan(models.Model):
     features = models.JSONField(
         default=dict,
         blank=True,
-        help_text='Structured config: {"limits": {"max_stores": N}, "features": {"advanced_analytics": bool, ...}}',
+        help_text='Structured config: {"limits": {"max_stores": N, "max_products": N}, "features": {"advanced_analytics": bool, ...}}',
     )
     is_default = models.BooleanField(
         default=False,

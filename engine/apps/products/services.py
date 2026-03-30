@@ -13,7 +13,9 @@ from django.conf import settings
 from django.db.models import Count, Max, Min, OuterRef, Prefetch, Q, Subquery, Sum
 from django.db.models.fields import PositiveIntegerField
 from django.shortcuts import get_object_or_404
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
+from engine.apps.billing.feature_gate import get_feature_config
 from engine.apps.inventory.models import Inventory
 from engine.core import cache_service
 
@@ -32,6 +34,30 @@ from .serializers import (
     StorefrontProductListSerializer,
 )
 from .stock_signals import get_low_stock_threshold
+
+
+def assert_product_creation_allowed(user, store) -> None:
+    """
+    Enforce plan.features.limits.max_products for the user's effective plan and store.
+
+    If max_products is absent from limits, no cap is applied (legacy plans).
+    """
+    limits = get_feature_config(user)["limits"]
+    if "max_products" not in limits:
+        return
+    raw = limits["max_products"]
+    if isinstance(raw, bool):
+        raise ValidationError({"detail": "Invalid max_products configuration on your plan."})
+    try:
+        max_products = int(raw)
+    except (TypeError, ValueError):
+        raise ValidationError({"detail": "Invalid max_products configuration on your plan."})
+    if max_products < 0:
+        raise ValidationError({"detail": "Invalid max_products configuration on your plan."})
+    if Product.objects.filter(store=store).count() >= max_products:
+        raise PermissionDenied(
+            detail="You have reached your product limit for your current plan."
+        )
 
 
 def annotate_storefront_product_stock(qs):
