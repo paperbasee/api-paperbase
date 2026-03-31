@@ -28,6 +28,11 @@ from .constants import (
 from .tasks import send_email_task, send_order_email_task
 
 
+def _format_local_email_datetime(dt):
+    """Render datetime in active local timezone for human-readable emails."""
+    return timezone.localtime(dt).strftime("%Y-%m-%d %I:%M:%S %p %Z")
+
+
 def _store_internal_email(store) -> str | None:
     """Store-facing inbox: contact_email first, then owner_email."""
     contact = (store.contact_email or "").strip()
@@ -250,7 +255,7 @@ def queue_two_fa_disabled_email(user) -> None:
         {
             "user_name": user.get_short_name() or user.email,
             "user_email": user.email,
-            "disabled_at": timezone.now().isoformat(),
+            "disabled_at": _format_local_email_datetime(timezone.now()),
         },
     )
 

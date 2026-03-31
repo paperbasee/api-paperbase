@@ -273,7 +273,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
         "html_body": (
             "<p>Hello {{ user_name|default:user_email }},</p>"
             "<p>Two-factor authentication (2FA) was <strong>disabled</strong> for your account.</p>"
-            "<p><strong>When</strong> {{ disabled_at }} (server time)</p>"
+            "<p><strong>When</strong> {{ disabled_at }} (local time)</p>"
             "<p>Only someone with access to your password could have done this. If it was you, no action is needed. "
             "If you did not turn off 2FA, sign in as soon as you can, turn 2FA back on, change your password, "
             "and contact support.</p>"
@@ -293,7 +293,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "<p>You asked for a one-time recovery code to regain access to your account when your authenticator "
             "app is unavailable.</p>"
             "<p><strong>Your code</strong><br /><strong>{{ code }}</strong></p>"
-            "<p><strong>Expires</strong> {{ expires_at }} (server time)</p>"
+            "<p><strong>Expires</strong> {{ expires_at }} (local time)</p>"
             "<ul>"
             "<li>Enter this code only on our official sign-in or recovery screen.</li>"
             "<li>Each new request invalidates any previous unused code.</li>"

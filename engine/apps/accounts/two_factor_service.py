@@ -28,6 +28,11 @@ TWO_FACTOR_CHALLENGE_TTL_MINUTES = 5
 RECOVERY_CODE_TTL_MINUTES = 20
 
 
+def _format_local_email_datetime(dt):
+    """Render datetime in active local timezone for human-readable emails."""
+    return timezone.localtime(dt).strftime("%Y-%m-%d %I:%M:%S %p %Z")
+
+
 def get_or_create_profile(user):
     profile, _ = UserTwoFactor.objects.get_or_create(user=user)
     return profile
@@ -175,7 +180,7 @@ def request_recovery_code(user):
         {
             "user_name": user.get_short_name() or user.email,
             "code": plain,
-            "expires_at": expires_at.isoformat(),
+            "expires_at": _format_local_email_datetime(expires_at),
         },
     )
     record_action(None, "2fa_recovery_request", user.email)
