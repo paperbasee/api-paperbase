@@ -85,6 +85,17 @@ INTERNAL_OVERRIDE_IP_ALLOWLIST = env_list(
 SECURITY_INTERNAL_OVERRIDE_ALLOWED = env_bool("SECURITY_INTERNAL_OVERRIDE_ALLOWED", False)
 TENANT_GUARD_STRICT_DEV = env_bool("TENANT_GUARD_STRICT_DEV", env_bool("CI", False))
 
+# Client IP: Django request.META key (e.g. HTTP_X_FORWARDED_FOR). Must match trusted ingress.
+TRUSTED_IP_HEADER = (os.getenv("TRUSTED_IP_HEADER", "HTTP_X_FORWARDED_FOR") or "HTTP_X_FORWARDED_FOR").strip()
+
+# Storefront rate limits (per minute, fixed window) — see engine.core.rate_limit
+TENANT_STOREFRONT_RATE_LIMIT_PER_IP_PER_MIN = int(
+    os.getenv("TENANT_STOREFRONT_RATE_LIMIT_PER_IP_PER_MIN", "100")
+)
+TENANT_API_KEY_AGGREGATE_RATE_LIMIT_PER_MIN = int(
+    os.getenv("TENANT_API_KEY_AGGREGATE_RATE_LIMIT_PER_MIN", "5000")
+)
+
 # ---------------------------------------------------------------------------
 # Data cache TTLs (seconds) — used by engine.core.cache_service
 # ---------------------------------------------------------------------------
@@ -164,6 +175,8 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 24,
+    # Must match the number of trusted proxies that append to X-Forwarded-For before Django.
+    "NUM_PROXIES": 1,
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
@@ -177,6 +190,9 @@ REST_FRAMEWORK = {
         "auth_otp_challenge": "12/min",
         "auth_otp_manage": "20/min",
         "direct_order": "30/hour",
+        "health": "60/min",
+        "heavy_search": "10/min",
+        "standard_api": "600/min",
     },
 }
 

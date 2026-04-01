@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from django.conf import settings
 from django.core.cache import caches
@@ -13,6 +14,9 @@ from engine.apps.stores.services import (
     resolve_active_store_api_key,
     touch_store_api_key_last_used,
 )
+from engine.core.redis_fixed_window import fixed_window_increment
+
+logger = logging.getLogger(__name__)
 
 API_KEY_EXEMPT_PATHS = (
     "/api/v1/auth/",
@@ -87,10 +91,14 @@ def _throttle_invalid_api_key(raw_key: str | None) -> bool:
     cache_key = f"rate:invalid_api_key:{fingerprint}"
     c = _rate_limit_cache()
     try:
-        current = c.incr(cache_key)
-    except ValueError:
-        c.set(cache_key, 1, 60)
-        current = 1
+        current = fixed_window_increment(c, cache_key, 60)
+    except Exception:
+        logger.warning(
+            "invalid_api_key rate limit cache error; fail open",
+            exc_info=True,
+            extra={"rate_limit_key": cache_key},
+        )
+        return False
     return current > limit
 
 

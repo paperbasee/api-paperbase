@@ -9,6 +9,9 @@ from engine.apps.notifications.models import StaffNotification
 from engine.apps.products.models import ProductAttribute
 from engine.apps.stores.models import Store, StoreMembership
 from engine.apps.stores.services import allocate_unique_store_code, normalize_store_code_base_from_name
+from django.test import override_settings
+
+from engine.core.client_ip import get_client_ip
 from engine.core.middleware.internal_override_middleware import InternalOverrideMiddleware
 
 User = get_user_model()
@@ -50,6 +53,23 @@ def test_internal_override_requires_allowlisted_ip(settings):
     allowed_request.user = user
     middleware.process_request(allowed_request)
     assert allowed_request.auth_context.internal_override_enabled is True
+
+
+def test_get_client_ip_matches_drf_num_proxies_one():
+    factory = RequestFactory()
+    req = factory.get(
+        "/api/v1/products/",
+        HTTP_X_FORWARDED_FOR="203.0.113.1, 10.0.0.1",
+        REMOTE_ADDR="10.0.0.2",
+    )
+    with override_settings(
+        TRUSTED_IP_HEADER="HTTP_X_FORWARDED_FOR",
+        REST_FRAMEWORK={
+            "NUM_PROXIES": 1,
+            "DEFAULT_THROTTLE_RATES": {},
+        },
+    ):
+        assert get_client_ip(req) == "10.0.0.1"
 
 
 @pytest.mark.django_db

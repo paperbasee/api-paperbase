@@ -6,6 +6,7 @@ from django.db.models import Sum, Count, Q
 from django.db.models.functions import TruncDate, TruncWeek, TruncMonth
 from django.utils import timezone
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
@@ -49,6 +50,8 @@ DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS = 20
 
 class DashboardStatsView(APIView):
     permission_classes = [DenyAPIKeyAccess, IsAdminUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "standard_api"
 
     def get(self, request):
         store = get_dashboard_store_from_request(request)
@@ -121,6 +124,8 @@ class DashboardStatsOverviewView(APIView):
     """
 
     permission_classes = [DenyAPIKeyAccess, IsAdminUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "standard_api"
 
     def _parse_date_range(self, request) -> tuple[date, date]:
         today = timezone.localdate()
@@ -356,6 +361,8 @@ class DashboardAnalyticsView(APIView):
     """
 
     permission_classes = [DenyAPIKeyAccess, IsAdminUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "standard_api"
 
     def _parse_date_range(self, request) -> tuple[date, date]:
         """Parse start/end date from query params, defaulting to the last 30 days."""

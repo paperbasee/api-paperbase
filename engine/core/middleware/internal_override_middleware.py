@@ -5,13 +5,7 @@ from dataclasses import dataclass
 from django.utils.deprecation import MiddlewareMixin
 
 from engine.core.authz import can_enable_internal_override
-
-
-def _client_ip(request) -> str:
-    forwarded_for = (request.META.get("HTTP_X_FORWARDED_FOR") or "").strip()
-    if forwarded_for:
-        return forwarded_for.split(",")[0].strip()
-    return (request.META.get("REMOTE_ADDR") or "").strip()
+from engine.core.client_ip import get_client_ip
 
 
 @dataclass(frozen=True)
@@ -29,11 +23,11 @@ class InternalOverrideMiddleware(MiddlewareMixin):
         if request.path in {"/health", "/health/"}:
             request.auth_context = AuthContext(
                 internal_override_enabled=False,
-                client_ip=_client_ip(request),
+                client_ip=get_client_ip(request),
             )
             return None
         user = getattr(request, "user", None)
-        client_ip = _client_ip(request)
+        client_ip = get_client_ip(request)
         enabled = can_enable_internal_override(user=user, client_ip=client_ip)
         request.auth_context = AuthContext(
             internal_override_enabled=enabled,

@@ -6,6 +6,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.generics import CreateAPIView, RetrieveAPIView
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
+from rest_framework.throttling import UserRateThrottle
 from rest_framework.views import APIView
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser, IsStorefrontAPIKey
@@ -41,7 +42,7 @@ class OrderCreateView(CreateAPIView):
     """Create order from request body line items (stateless checkout)."""
     serializer_class = OrderCreateSerializer
     authentication_classes = []
-    throttle_classes = [DirectOrderRateThrottle]
+    throttle_classes = [DirectOrderRateThrottle, UserRateThrottle]
     allow_api_key = True
 
     def get_permissions(self):

@@ -1,5 +1,6 @@
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser
@@ -10,6 +11,8 @@ from engine.core.tenancy import get_active_store
 
 class UnifiedSearchView(APIView):
     permission_classes = [DenyAPIKeyAccess, IsAuthenticated, IsAdminUser]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "heavy_search"
 
     def get(self, request):
         query = (request.query_params.get("query") or "").strip()

@@ -1,21 +1,11 @@
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse
 from django.urls import include, path
-import logging
-from time import perf_counter
 
+from config.health_views import HealthCheckView
 from engine.core.storefront_search_views import StorefrontSearchView
-
-logger = logging.getLogger(__name__)
-
-def health(_request):
-    start = perf_counter()
-    logger.info("HEALTH HIT")
-    elapsed_ms = (perf_counter() - start) * 1000
-    logger.info("HEALTH RESPONSE TIME: %.2f ms", elapsed_ms)
-    return JsonResponse({"status": "ok"})
 
 
 def api_home(_request):
@@ -50,7 +40,7 @@ api_v1_patterns = [
 
 urlpatterns = [
     path("", api_home),
-    path("health", health),
+    path("health", HealthCheckView.as_view()),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('api/v1/', include(api_v1_patterns)),
 ]
