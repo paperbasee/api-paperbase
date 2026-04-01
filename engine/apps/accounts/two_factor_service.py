@@ -16,6 +16,7 @@ from engine.apps.accounts.models import (
     UserTwoFactorRecoveryCode,
 )
 from engine.apps.emails.constants import TWO_FA_RECOVERY
+from engine.apps.emails.display_time import format_email_datetime
 from engine.apps.emails.tasks import send_email_task
 from engine.core.rate_limit_service import enforce_rate_limit, record_action
 from engine.core.tenancy import get_active_store
@@ -26,11 +27,6 @@ TWO_FACTOR_MAX_ATTEMPTS = 5
 TWO_FACTOR_LOCK_MINUTES = 10
 TWO_FACTOR_CHALLENGE_TTL_MINUTES = 5
 RECOVERY_CODE_TTL_MINUTES = 20
-
-
-def _format_local_email_datetime(dt):
-    """Render datetime in active local timezone for human-readable emails."""
-    return timezone.localtime(dt).strftime("%Y-%m-%d %I:%M:%S %p %Z")
 
 
 def get_or_create_profile(user):
@@ -180,7 +176,7 @@ def request_recovery_code(user):
         {
             "user_name": user.get_short_name() or user.email,
             "code": plain,
-            "expires_at": _format_local_email_datetime(expires_at),
+            "expires_at": format_email_datetime(expires_at),
         },
     )
     record_action(None, "2fa_recovery_request", user.email)
