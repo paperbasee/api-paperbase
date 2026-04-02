@@ -27,6 +27,7 @@ from engine.apps.products.models import (
     ProductVariantAttribute,
 )
 from engine.apps.inventory.models import Inventory
+from engine.apps.inventory.utils import clamp_stock
 from engine.apps.stores.models import Store, StoreSettings
 from engine.core.tenant_execution import tenant_scope_from_store
 
@@ -338,7 +339,11 @@ class Command(BaseCommand):
                     price_override=None,
                     is_active=True,
                 )
-                Inventory.objects.create(product=p, variant=v, quantity=random.randint(8, 85))
+                Inventory.objects.create(
+                    product=p,
+                    variant=v,
+                    quantity=clamp_stock(random.randint(8, 85)),
+                )
                 ProductVariantAttribute.objects.create(variant=v, attribute_value=cv)
                 ProductVariantAttribute.objects.create(variant=v, attribute_value=sv)
 
@@ -400,7 +405,11 @@ class Command(BaseCommand):
                     price_override=Decimal("64.99") if fit_code == "SLM" else None,
                     is_active=True,
                 )
-                Inventory.objects.create(product=p, variant=v, quantity=random.randint(5, 40))
+                Inventory.objects.create(
+                    product=p,
+                    variant=v,
+                    quantity=clamp_stock(random.randint(5, 40)),
+                )
                 ProductVariantAttribute.objects.create(variant=v, attribute_value=wv)
                 ProductVariantAttribute.objects.create(variant=v, attribute_value=fv)
 

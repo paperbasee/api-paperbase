@@ -28,6 +28,7 @@ class OrderItemSerializer(SafeModelSerializer):
     product_public_id = serializers.SerializerMethodField()
     product_name = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    is_unavailable = serializers.SerializerMethodField()
     variant_public_id = serializers.SerializerMethodField()
     variant_sku = serializers.SerializerMethodField()
     variant_options = serializers.SerializerMethodField()
@@ -39,6 +40,7 @@ class OrderItemSerializer(SafeModelSerializer):
             'product_public_id',
             'product_name',
             'status',
+            'is_unavailable',
             'quantity',
             'unit_price',
             'original_price',
@@ -59,6 +61,9 @@ class OrderItemSerializer(SafeModelSerializer):
 
     def get_status(self, obj):
         return "active" if obj.product else "deleted"
+
+    def get_is_unavailable(self, obj):
+        return obj.product is None
 
     def get_variant_public_id(self, obj):
         return obj.variant.public_id if obj.variant_id else None
@@ -93,6 +98,8 @@ class OrderSerializer(SafeModelSerializer):
         source='shipping_rate.public_id', read_only=True, allow_null=True
     )
     customer = serializers.SerializerMethodField()
+    has_unavailable_products = serializers.SerializerMethodField()
+    unavailable_products_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -107,6 +114,7 @@ class OrderSerializer(SafeModelSerializer):
             'courier_provider', 'courier_consignment_id',
             'sent_to_courier', 'customer_confirmation_sent_at',
             'customer', 'created_at', 'updated_at', 'items',
+            'has_unavailable_products', 'unavailable_products_count',
         ]
         read_only_fields = ['public_id', 'order_number']
 
@@ -119,6 +127,12 @@ class OrderSerializer(SafeModelSerializer):
             "name": customer.name,
             "phone": customer.phone,
         }
+
+    def get_unavailable_products_count(self, obj):
+        return obj.items.filter(product__isnull=True).count()
+
+    def get_has_unavailable_products(self, obj):
+        return self.get_unavailable_products_count(obj) > 0
 
 
 class StorefrontOrderLineReceiptSerializer(serializers.BaseSerializer):

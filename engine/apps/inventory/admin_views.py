@@ -2,6 +2,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import F, Prefetch, Q
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 from config.permissions import IsDashboardUser
 from engine.apps.products.models import ProductVariantAttribute
@@ -88,15 +89,19 @@ class AdminInventoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         reference = request.data.get('reference', '') or ''
         reference_id = request.data.get("reference_id", "") or ""
         source = request.data.get("source", "admin") or "admin"
-        adjust_stock(
-            inventory,
-            change,
-            reason=reason,
-            source=source,
-            reference_id=reference_id,
-            reference=reference,
-            actor=request.user,
-        )
+        try:
+            adjust_stock(
+                inventory,
+                change,
+                reason=reason,
+                source=source,
+                reference_id=reference_id,
+                reference=reference,
+                actor=request.user,
+            )
+        except DjangoValidationError as exc:
+            msg = getattr(exc, "message", None) or "; ".join(exc.messages) or "Invalid stock adjustment."
+            return Response({"detail": msg}, status=status.HTTP_400_BAD_REQUEST)
         inventory.refresh_from_db()
         return Response(InventoryDetailSerializer(inventory).data)
 

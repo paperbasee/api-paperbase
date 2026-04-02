@@ -5,7 +5,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from engine.apps.inventory.models import Inventory
-from engine.apps.inventory.services import adjust_stock
+from engine.apps.inventory.services import adjust_inventory_stock, adjust_stock
+from engine.apps.inventory.utils import MAX_STOCK_QUANTITY
 from engine.apps.products.models import Product, ProductVariant
 from engine.apps.stores.models import StoreMembership
 from engine.core.tenant_execution import tenant_scope_from_store
@@ -326,3 +327,68 @@ class InventoryAutoCreationTests(TestCase):
                 Inventory.objects.filter(product=product, variant__isnull=False).count(),
                 1,
             )
+
+    def test_adjust_inventory_stock_clamps_upper_bound(self):
+        pr = self.client.post(
+            "/api/v1/admin/products/",
+            {
+                "name": "Clamp Upper Product",
+                "price": "30.00",
+                "category": self.category.public_id,
+                "is_active": True,
+                "description": "",
+            },
+            format="json",
+            **self._store_headers(),
+        )
+        self.assertEqual(pr.status_code, status.HTTP_201_CREATED, pr.data)
+        with tenant_scope_from_store(store=self.store, reason="test"):
+            product = Product.objects.get(public_id=pr.data["public_id"])
+            inv = Inventory.objects.get(product=product, variant__isnull=True)
+            adjust_inventory_stock(
+                store_id=self.store.id,
+                product_id=product.id,
+                variant_id=None,
+                delta_qty=-200000,  # increase stock by 200000
+                reason="restock",
+                source="admin",
+                allow_negative=True,
+            )
+            inv.refresh_from_db()
+            self.assertEqual(inv.quantity, MAX_STOCK_QUANTITY)
+
+    def test_first_variant_transfer_clamps_existing_product_level_stock(self):
+        pr = self.client.post(
+            "/api/v1/admin/products/",
+            {
+                "name": "Transfer Clamp Product",
+                "price": "16.00",
+                "category": self.category.public_id,
+                "is_active": True,
+                "description": "",
+            },
+            format="json",
+            **self._store_headers(),
+        )
+        self.assertEqual(pr.status_code, status.HTTP_201_CREATED, pr.data)
+        product_pid = pr.data["public_id"]
+        with tenant_scope_from_store(store=self.store, reason="test"):
+            product = Product.objects.get(public_id=product_pid)
+            Inventory.objects.filter(product=product, variant__isnull=True).update(quantity=200000)
+
+        vr = self.client.post(
+            "/api/v1/admin/product-variants/",
+            {
+                "product_public_id": product_pid,
+                "attribute_value_public_ids": [],
+                "is_active": True,
+            },
+            format="json",
+            **self._store_headers(),
+        )
+        self.assertEqual(vr.status_code, status.HTTP_201_CREATED, vr.data)
+        with tenant_scope_from_store(store=self.store, reason="test"):
+            product = Product.objects.get(public_id=product_pid)
+            variant = ProductVariant.objects.get(public_id=vr.data["public_id"])
+            variant_inv = Inventory.objects.get(product=product, variant=variant)
+            self.assertEqual(variant_inv.quantity, MAX_STOCK_QUANTITY)

@@ -7,6 +7,7 @@ from django.db import transaction
 from engine.apps.products.models import Product
 
 from .models import Inventory
+from .utils import clamp_stock
 
 logger = logging.getLogger(__name__)
 
@@ -29,12 +30,12 @@ def sync_product_stock_cache(store_id: int) -> None:
 
         for row in inventories:
             pid = row["product_id"]
-            qty = int(row["quantity"] or 0)
+            qty = clamp_stock(row["quantity"] or 0)
             product_expected[pid] = product_expected.get(pid, 0) + qty
 
         changed_products = []
         for p in products:
-            expected = int(product_expected.get(p.id, 0))
+            expected = clamp_stock(product_expected.get(p.id, 0))
             if int(p.stock) != expected:
                 logger.warning(
                     "Stock cache mismatch for product",

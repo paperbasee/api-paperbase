@@ -13,6 +13,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from engine.apps.inventory.models import Inventory
+from engine.apps.inventory.utils import clamp_stock
 from engine.apps.orders.models import Order, OrderAddress, OrderItem
 from engine.apps.products.models import (
     Product,
@@ -372,7 +373,7 @@ def _restore_product_from_snapshot(*, store: Store, snapshot: dict) -> Product:
         status=prod.get("status") or Product.Status.ACTIVE,
         category_id=category_id,
         description=prod.get("description") or "",
-        stock=int(prod.get("stock") or 0),
+        stock=clamp_stock(prod.get("stock") or 0),
         stock_tracking=bool(prod.get("stock_tracking", True)),
         is_active=bool(prod.get("is_active", True)),
         extra_data=prod.get("extra_data") or {},
@@ -410,7 +411,7 @@ def _restore_product_from_snapshot(*, store: Store, snapshot: dict) -> Product:
             public_id=row["public_id"],
             product_id=p.pk,
             variant_id=row.get("variant_id"),
-            quantity=int(row.get("quantity") or 0),
+            quantity=clamp_stock(row.get("quantity") or 0),
             low_stock_threshold=int(row.get("low_stock_threshold") or 5),
             is_tracked=bool(row.get("is_tracked", True)),
         )

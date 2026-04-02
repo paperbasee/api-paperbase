@@ -238,10 +238,16 @@ def apply_order_status_change(
     with transaction.atomic():
         locked = Order.objects.select_for_update().prefetch_related("items").get(pk=order.pk)
         from_status = locked.status
+        has_unavailable_products = any(item.product_id is None for item in locked.items.all())
 
         if from_status == Order.Status.CANCELLED and to_status != Order.Status.CANCELLED:
             raise ValidationError(
                 {"status": "Cannot change status of a cancelled order."}
+            )
+
+        if has_unavailable_products:
+            raise ValidationError(
+                {"status": "Remove unavailable products before updating order status"}
             )
 
         if from_status == to_status:

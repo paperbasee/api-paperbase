@@ -50,6 +50,7 @@ class AdminOrderItemSerializer(SafeModelSerializer):
     product_name = serializers.SerializerMethodField()
     product_brand = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
+    is_unavailable = serializers.SerializerMethodField()
     product_image = serializers.SerializerMethodField()
     variant_public_id = serializers.CharField(source="variant.public_id", read_only=True, allow_null=True)
     variant_sku = serializers.CharField(source="variant.sku", read_only=True, allow_null=True)
@@ -63,6 +64,7 @@ class AdminOrderItemSerializer(SafeModelSerializer):
         fields = [
             'public_id', 'product', 'product_public_id', 'product_name', 'product_brand', 'product_image',
             'status',
+            'is_unavailable',
             'variant_public_id', 'variant_sku', 'variant_inventory_quantity', 'variant_option_labels',
             'quantity', 'unit_price', 'original_price', 'discount_amount', 'line_subtotal', 'line_total',
             'catalog_unit_price', 'catalog_list_price',
@@ -88,6 +90,9 @@ class AdminOrderItemSerializer(SafeModelSerializer):
 
     def get_status(self, obj):
         return "active" if obj.product else "deleted"
+
+    def get_is_unavailable(self, obj):
+        return obj.product is None
 
     def get_product_image(self, obj):
         if obj.product and obj.product.image and hasattr(obj.product.image, 'url'):
@@ -133,6 +138,8 @@ class AdminOrderListSerializer(SafeModelSerializer):
     # (see AdminOrderViewSet.get_queryset and DashboardStatsView); avoids N+1.
     items_count = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
+    has_unavailable_products = serializers.SerializerMethodField()
+    unavailable_products_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -142,6 +149,7 @@ class AdminOrderListSerializer(SafeModelSerializer):
             'shipping_cost', 'total',
             'shipping_name', 'phone', 'district',
             'items_count', 'customer',
+            'has_unavailable_products', 'unavailable_products_count',
             'courier_provider', 'courier_consignment_id',
             'sent_to_courier', 'customer_confirmation_sent_at',
             'created_at', 'updated_at',
@@ -156,6 +164,12 @@ class AdminOrderListSerializer(SafeModelSerializer):
             return None
         return {"public_id": customer.public_id, "name": customer.name, "phone": customer.phone}
 
+    def get_unavailable_products_count(self, obj):
+        return obj.items.filter(product__isnull=True).count()
+
+    def get_has_unavailable_products(self, obj):
+        return self.get_unavailable_products_count(obj) > 0
+
 
 class AdminOrderSerializer(SafeModelSerializer):
     items = AdminOrderItemSerializer(many=True, read_only=True)
@@ -166,6 +180,8 @@ class AdminOrderSerializer(SafeModelSerializer):
         source="shipping_rate.public_id", read_only=True, allow_null=True
     )
     customer = serializers.SerializerMethodField()
+    has_unavailable_products = serializers.SerializerMethodField()
+    unavailable_products_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Order
@@ -180,6 +196,7 @@ class AdminOrderSerializer(SafeModelSerializer):
             'courier_provider', 'courier_consignment_id',
             'sent_to_courier', 'customer_confirmation_sent_at',
             'pricing_snapshot', 'items', 'created_at', 'updated_at',
+            'has_unavailable_products', 'unavailable_products_count',
         ]
         read_only_fields = [
             'public_id', 'order_number', 'status',
@@ -195,6 +212,12 @@ class AdminOrderSerializer(SafeModelSerializer):
         if not customer:
             return None
         return {"public_id": customer.public_id, "name": customer.name, "phone": customer.phone}
+
+    def get_unavailable_products_count(self, obj):
+        return obj.items.filter(product__isnull=True).count()
+
+    def get_has_unavailable_products(self, obj):
+        return self.get_unavailable_products_count(obj) > 0
 
 
 class AdminOrderItemUpdateSerializer(serializers.Serializer):

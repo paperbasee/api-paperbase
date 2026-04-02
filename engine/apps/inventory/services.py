@@ -5,9 +5,9 @@ import logging
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import F
 
 from engine.core.tenant_context import require_store_context
+from .utils import clamp_stock
 
 logger = logging.getLogger(__name__)
 
@@ -61,16 +61,17 @@ def adjust_inventory_stock(
         except Inventory.DoesNotExist as exc:
             raise ValidationError("Invalid product for this store.") from exc
 
-        next_quantity = int(inventory.quantity) - delta_qty
-        if not allow_negative and next_quantity < 0:
-            raise ValidationError("Stock cannot go below zero.")
+        current_quantity = int(inventory.quantity)
+        next_quantity = current_quantity - delta_qty
+        clamped_next_quantity = clamp_stock(next_quantity)
+        applied_change = clamped_next_quantity - current_quantity
 
-        Inventory.objects.filter(pk=inventory.pk).update(quantity=F("quantity") - delta_qty)
+        Inventory.objects.filter(pk=inventory.pk).update(quantity=clamped_next_quantity)
         inventory.refresh_from_db(fields=["quantity", "updated_at"])
 
         StockMovement.objects.create(
             inventory=inventory,
-            change=-delta_qty,
+            change=applied_change,
             reason=reason,
             source=source,
             reference_id=(reference_id or "")[:100],

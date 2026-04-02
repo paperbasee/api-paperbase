@@ -7,6 +7,8 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from engine.apps.inventory.models import Inventory
+from engine.apps.inventory.utils import MAX_STOCK_QUANTITY, MIN_STOCK_QUANTITY
 from engine.apps.products.models import Product
 from engine.apps.stores.models import StoreMembership
 from engine.core.models import TrashItem
@@ -104,6 +106,28 @@ class TrashSoftDeleteTests(TestCase):
             self.assertTrue(Product.objects.filter(public_id=pub).exists())
         tr = TrashItem.objects.get(pk=tid)
         self.assertTrue(tr.is_restored)
+
+    def test_restore_product_clamps_snapshot_inventory_quantity(self):
+        self._auth_owner()
+        pub = self.product.public_id
+        self.client.delete(f"/api/v1/admin/products/{pub}/")
+        tr = TrashItem.objects.get(store=self.store, entity_type=TrashItem.EntityType.PRODUCT)
+        snap = tr.snapshot_json
+        inventories = list(snap.get("inventories") or [])
+        self.assertTrue(inventories, "Expected product snapshot to include inventory rows")
+        inventories[0]["quantity"] = 999999
+        snap["inventories"] = inventories
+        snap["product"]["stock"] = -123
+        tr.snapshot_json = snap
+        tr.save(update_fields=["snapshot_json"])
+
+        resp = self.client.post(f"/api/v1/admin/trash/{tr.pk}/restore/")
+        self.assertEqual(resp.status_code, status.HTTP_200_OK, resp.data)
+        with tenant_scope_from_store(store=self.store, reason="test assert product restored clamped"):
+            product = Product.objects.get(public_id=pub)
+            inv = Inventory.objects.get(product=product, variant__isnull=True)
+            self.assertEqual(inv.quantity, MAX_STOCK_QUANTITY)
+            self.assertEqual(product.stock, MIN_STOCK_QUANTITY)
 
     def test_purge_expired_deletes_trash_row(self):
         self._auth_owner()

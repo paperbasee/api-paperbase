@@ -3,6 +3,7 @@ from rest_framework import serializers
 
 from engine.apps.inventory.cache_sync import sync_product_stock_cache
 from engine.apps.inventory.models import Inventory
+from engine.apps.inventory.utils import clamp_stock
 from engine.core.serializers import SafeModelSerializer
 
 from .constants import MAX_PRODUCT_IMAGES_TOTAL
@@ -458,14 +459,14 @@ class AdminProductVariantSerializer(SafeModelSerializer):
                 product=variant.product, variant__isnull=True
             ).first()
             if old_inv:
-                transferred_qty = old_inv.quantity
+                transferred_qty = clamp_stock(old_inv.quantity)
                 Inventory.objects.filter(
                     product=variant.product, variant__isnull=True
                 ).delete()
         Inventory.objects.get_or_create(
             product=variant.product,
             variant=variant,
-            defaults={"quantity": transferred_qty},
+            defaults={"quantity": clamp_stock(transferred_qty)},
         )
         if is_first_variant:
             sync_product_stock_cache(int(variant.product.store_id))

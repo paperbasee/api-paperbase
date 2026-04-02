@@ -15,6 +15,7 @@ from engine.core.admin_views import StoreRolePermissionMixin
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
 from engine.apps.inventory.models import Inventory
+from engine.apps.inventory.utils import clamp_stock
 from .models import (
     Category,
     Product,
@@ -159,7 +160,7 @@ class AdminProductViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         Inventory.objects.get_or_create(
             product=instance,
             variant=None,
-            defaults={"quantity": 0},
+            defaults={"quantity": clamp_stock(0)},
         )
         invalidate_product_cache(store.public_id)
         log_activity(
@@ -459,7 +460,7 @@ class AdminProductVariantViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet
             Inventory.objects.get_or_create(
                 product=product,
                 variant=None,
-                defaults={"quantity": 0},
+                defaults={"quantity": clamp_stock(0)},
             )
             from engine.apps.inventory.cache_sync import sync_product_stock_cache
             sync_product_stock_cache(int(product.store_id))

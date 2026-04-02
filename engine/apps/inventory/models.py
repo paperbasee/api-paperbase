@@ -3,6 +3,7 @@ from django.db import models
 from django.db.models import Q
 
 from engine.core.ids import generate_public_id
+from .utils import clamp_stock
 
 
 class Inventory(models.Model):
@@ -58,6 +59,7 @@ class Inventory(models.Model):
     def save(self, *args, **kwargs):
         if not self.public_id:
             self.public_id = generate_public_id("inventory")
+        self.quantity = clamp_stock(self.quantity)
         super().save(*args, **kwargs)
 
     def is_low_stock(self):
