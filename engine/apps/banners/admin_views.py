@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
+from engine.core.media_deletion_service import schedule_media_deletion
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
 
@@ -63,6 +64,7 @@ class AdminBannerViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         title = instance.title or instance.public_id
         public_id = instance.public_id
+        schedule_media_deletion(instance)
         ctx = get_active_store(self.request)
         super().perform_destroy(instance)
         if ctx.store:

@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from config.permissions import DenyAPIKeyAccess, IsPlatformSuperuserOrStoreAdmin
 from engine.core.activity import log_activity
 from engine.core.admin_views import StoreRolePermissionMixin
+from engine.core.media_deletion_service import schedule_media_deletion
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
 from engine.apps.inventory.models import Inventory
@@ -276,6 +277,12 @@ class AdminProductImageViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         serializer.save()
         invalidate_product_cache(store.public_id)
 
+    def perform_destroy(self, instance):
+        store_public_id = instance.product.store.public_id
+        schedule_media_deletion(instance)
+        super().perform_destroy(instance)
+        invalidate_product_cache(store_public_id)
+
 
 class AdminCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
     """All categories for the store. List: roots by default, or `parent_public_id`, or `tree=1` for nested JSON."""
@@ -362,6 +369,7 @@ class AdminCategoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
     def perform_destroy(self, instance):
         name = getattr(instance, "name", "")
         public_id = instance.public_id
+        schedule_media_deletion(instance)
         ctx = get_active_store(self.request)
         super().perform_destroy(instance)
         if ctx.store:

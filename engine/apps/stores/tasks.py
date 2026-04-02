@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from config.celery import app
-from django.core.files.storage import default_storage
 from django.db import transaction
 
 from engine.apps.analytics.models import StoreAnalytics, StoreDashboardStatsSnapshot
@@ -10,31 +9,14 @@ from engine.apps.orders.models import Order
 from engine.apps.products.models import Category, Product, ProductImage
 from engine.apps.banners.models import Banner
 from engine.apps.support.models import SupportTicketAttachment
+from engine.core.media_deletion_service import schedule_media_deletion_from_keys
 from engine.apps.stores.models import Store, StoreDeletionJob
 from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 from engine.core.tenant_execution import system_scope
 
 
-def _delete_storage_file(file_name: str | None) -> None:
-    """
-    Delete a file from the configured storage backend (filesystem/S3/etc).
-
-    Django does not automatically delete files from storage on model hard-delete,
-    so we explicitly remove media/assets as part of store deletion.
-    """
-
-    if not file_name:
-        return
-    try:
-        default_storage.delete(file_name)
-    except Exception:
-        # Deleting media should not block DB deletion; we track failure via job.error_message later if needed.
-        pass
-
-
-def _delete_storage_files(file_names) -> None:
-    for name in file_names:
-        _delete_storage_file(name)
+def _collect_non_empty(values) -> list[str]:
+    return list(dict.fromkeys([str(v).strip() for v in values if str(v).strip()]))
 
 
 @app.task(name="engine.apps.stores.hard_delete_store")
@@ -84,12 +66,15 @@ def hard_delete_store(job_public_id: str) -> None:
             job.save(update_fields=["current_step"])
 
             # Step 3: Delete product media + product graph (variants/images/etc).
-            product_image_names = Product.objects.filter(store_id=store.id).values_list("image", flat=True)
-            gallery_image_names = ProductImage.objects.filter(product__store_id=store.id).values_list(
+            product_image_names = _collect_non_empty(
+                Product.objects.filter(store_id=store.id).values_list("image", flat=True)
+            )
+            gallery_image_names = _collect_non_empty(
+                ProductImage.objects.filter(product__store_id=store.id).values_list(
                 "image", flat=True
             )
-            _delete_storage_files(product_image_names)
-            _delete_storage_files(gallery_image_names)
+            )
+            media_keys: list[str] = list(dict.fromkeys([*product_image_names, *gallery_image_names]))
 
             # Important ordering:
             # - orders are deleted before products to avoid PROTECT constraints
@@ -107,26 +92,33 @@ def hard_delete_store(job_public_id: str) -> None:
             job.save(update_fields=["current_step"])
 
             # Step 5: Delete remaining media/assets before hard-deleting the store.
-            _delete_storage_file(getattr(store.logo, "name", None))
+            media_keys.extend(store.get_media_keys())
 
             # Category images (store-scoped, but category records are still present until store delete cascade).
-            category_image_names = Category.objects.filter(store_id=store.id).values_list("image", flat=True)
-            _delete_storage_files(category_image_names)
+            category_image_names = _collect_non_empty(
+                Category.objects.filter(store_id=store.id).values_list("image", flat=True)
+            )
+            media_keys.extend(category_image_names)
 
             # Banner images.
-            banner_image_names = Banner.objects.filter(store_id=store.id).values_list("image", flat=True)
-            _delete_storage_files(banner_image_names)
+            banner_image_names = _collect_non_empty(
+                Banner.objects.filter(store_id=store.id).values_list("image", flat=True)
+            )
+            media_keys.extend(banner_image_names)
 
             # Support ticket attachments.
-            attachment_file_names = SupportTicketAttachment.objects.filter(
-                ticket__store_id=store.id
-            ).values_list("file", flat=True)
-            _delete_storage_files(attachment_file_names)
+            attachment_file_names = _collect_non_empty(
+                SupportTicketAttachment.objects.filter(ticket__store_id=store.id).values_list("file", flat=True)
+            )
+            media_keys.extend(attachment_file_names)
+            media_keys = list(dict.fromkeys(media_keys))
 
             # Final DB deletion: store + remaining store-scoped data via cascades.
             invalidate_notifications_and_dashboard_caches(store_public_id)
             with transaction.atomic():
                 Store.objects.filter(id=store.id).delete()
+
+            schedule_media_deletion_from_keys(media_keys)
 
             job.status = StoreDeletionJob.Status.SUCCESS
             job.current_step = ""

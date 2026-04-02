@@ -5,6 +5,7 @@ from config.permissions import IsDashboardUser
 from engine.core.activity import log_activity
 from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
 from engine.core.admin_views import StoreRolePermissionMixin
+from engine.core.media_deletion_service import schedule_media_deletion_from_keys
 from engine.core.models import ActivityLog
 from engine.core.tenancy import get_active_store
 
@@ -57,7 +58,11 @@ class AdminSupportTicketViewSet(
         public_id = instance.public_id
         subject = getattr(instance, "subject", "")
         store_public_id = instance.store.public_id
+        media_keys: list[str] = []
+        for attachment in instance.attachments.all():
+            media_keys.extend(attachment.get_media_keys())
         super().perform_destroy(instance)
+        schedule_media_deletion_from_keys(media_keys)
         invalidate_notifications_and_dashboard_caches(store_public_id)
         log_activity(
             request=self.request,

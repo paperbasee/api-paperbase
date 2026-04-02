@@ -94,3 +94,7 @@ class SupportTicketAttachment(models.Model):
 
     def __str__(self) -> str:
         return f"Attachment for ticket {self.ticket_id}"
+
+    def get_media_keys(self) -> list[str]:
+        key = getattr(self.file, "name", "") if self.file else ""
+        return [key] if key else []

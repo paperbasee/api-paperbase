@@ -123,6 +123,10 @@ class Category(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    def get_media_keys(self) -> list[str]:
+        key = getattr(self.image, "name", "") if self.image else ""
+        return [key] if key else []
+
 
 class Product(models.Model):
     """Product model aligned with frontend Product interface. Supports variants and attributes."""
@@ -193,6 +197,17 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
+    def get_media_keys(self) -> list[str]:
+        keys: list[str] = []
+        main = getattr(self.image, "name", "") if self.image else ""
+        if main:
+            keys.append(main)
+        for row in self.images.all():
+            key = getattr(row.image, "name", "") if row.image else ""
+            if key:
+                keys.append(key)
+        return list(dict.fromkeys(keys))
 
     def clean(self):
         super().clean()
@@ -304,6 +319,10 @@ class ProductImage(models.Model):
 
     def __str__(self) -> str:
         return f"Image for {self.product_id}"
+
+    def get_media_keys(self) -> list[str]:
+        key = getattr(self.image, "name", "") if self.image else ""
+        return [key] if key else []
 
 
 class ProductAttribute(models.Model):

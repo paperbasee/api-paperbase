@@ -7,6 +7,7 @@ SECRET_KEY = os.getenv(  # noqa: F405
 )
 DEBUG = True
 ALLOWED_HOSTS = ["*"]
+IS_DEVELOPMENT = True
 
 SIMPLE_JWT["SIGNING_KEY"] = SECRET_KEY  # noqa: F405
 

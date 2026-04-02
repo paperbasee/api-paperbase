@@ -1,8 +1,77 @@
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterable
+
+import boto3
+from django.conf import settings
+
 from config.celery import app
 from engine.core.trash_service import purge_expired_trash
+
+logger = logging.getLogger(__name__)
+
+R2_DELETE_BATCH_SIZE = 1000
+
+
+def _chunks(items: list[str], size: int) -> Iterable[list[str]]:
+    for i in range(0, len(items), size):
+        yield items[i : i + size]
+
+
+def _get_r2_delete_client():
+    return boto3.client(
+        "s3",
+        aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
+        aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
+        endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+        region_name=getattr(settings, "AWS_S3_REGION_NAME", None),
+    )
 
 
 @app.task(name="engine.core.purge_expired_trash")
 def purge_expired_trash_task() -> int:
     """Celery beat: permanently remove expired trash rows and orphan media."""
     return purge_expired_trash()
+
+
+@app.task(
+    bind=True,
+    autoretry_for=(Exception,),
+    retry_backoff=True,
+    retry_jitter=True,
+    max_retries=5,
+    name="engine.core.delete_r2_objects",
+)
+def delete_r2_objects(self, keys: list[str]) -> int:
+    """
+    Delete media objects from Cloudflare R2 in safe batches.
+
+    Idempotent by design:
+    - Duplicate keys are de-duplicated.
+    - Missing objects are ignored by S3 DeleteObjects.
+    """
+    normalized = list(dict.fromkeys([(k or "").strip() for k in (keys or []) if (k or "").strip()]))
+    if not normalized:
+        return 0
+    bucket = (getattr(settings, "AWS_STORAGE_BUCKET_NAME", "") or "").strip()
+    if not bucket:
+        logger.warning("R2 cleanup skipped: AWS_STORAGE_BUCKET_NAME is not configured")
+        return 0
+
+    client = _get_r2_delete_client()
+    deleted_count = 0
+    for batch in _chunks(normalized, R2_DELETE_BATCH_SIZE):
+        resp = client.delete_objects(
+            Bucket=bucket,
+            Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+        )
+        deleted_count += len(resp.get("Deleted", []) or [])
+        # Log and continue: delete must remain idempotent even with partial failures.
+        errors = resp.get("Errors", []) or []
+        if errors:
+            logger.warning(
+                "R2 cleanup partial delete errors",
+                extra={"error_count": len(errors)},
+            )
+    return deleted_count

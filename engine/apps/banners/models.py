@@ -42,3 +42,7 @@ class Banner(models.Model):
 
     def __str__(self) -> str:
         return self.title or f"Banner {self.public_id}"
+
+    def get_media_keys(self) -> list[str]:
+        key = getattr(self.image, "name", "") if self.image else ""
+        return [key] if key else []

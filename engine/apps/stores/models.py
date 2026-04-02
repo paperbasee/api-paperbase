@@ -129,6 +129,10 @@ class Store(models.Model):
     def __str__(self) -> str:
         return self.name
 
+    def get_media_keys(self) -> list[str]:
+        key = getattr(self.logo, "name", "") if self.logo else ""
+        return [key] if key else []
+
 
 class StoreSettings(models.Model):
     """Per-store configuration and feature flags."""

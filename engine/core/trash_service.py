@@ -8,7 +8,6 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.files.storage import default_storage
 from django.db import transaction
 from django.utils import timezone
 
@@ -23,20 +22,12 @@ from engine.apps.products.models import (
 )
 from engine.apps.stores.models import Store
 from engine.core.admin_dashboard_cache import invalidate_notifications_and_dashboard_caches
+from engine.core.media_deletion_service import schedule_media_deletion_from_keys
 from engine.core.models import TrashItem
 from engine.core.tenant_execution import system_scope
 
 SNAPSHOT_SCHEMA_VERSION = 1
 TRASH_RETENTION_DAYS = 15
-
-
-def _delete_storage_file(file_name: str | None) -> None:
-    if not file_name:
-        return
-    try:
-        default_storage.delete(file_name)
-    except Exception:
-        pass
 
 
 def _decimal_json(d: Decimal | None) -> str | None:
@@ -66,30 +57,22 @@ def _parse_dt(value: Any):
     return parsed
 
 
-def _collect_product_image_names(product: Product) -> list[str]:
-    names: list[str] = []
-    if product.image and getattr(product.image, "name", None):
-        names.append(product.image.name)
-    for img in product.images.all():
-        if img.image and getattr(img.image, "name", None):
-            names.append(img.image.name)
-    return names
-
-
 def _json_safe_snapshot(data: dict) -> dict:
     """Ensure JSONField can persist the snapshot (UUID, Decimal, datetime, etc.)."""
     return json.loads(json.dumps(data, cls=DjangoJSONEncoder))
 
 
-def _delete_product_media_from_snapshot(snapshot: dict) -> None:
+def _collect_product_media_keys_from_snapshot(snapshot: dict) -> list[str]:
+    keys: list[str] = []
     prod = snapshot.get("product") or {}
     main = prod.get("image") or ""
     if main:
-        _delete_storage_file(main)
+        keys.append(str(main))
     for row in snapshot.get("images") or []:
         name = row.get("image") or ""
         if name:
-            _delete_storage_file(name)
+            keys.append(str(name))
+    return list(dict.fromkeys(keys))
 
 
 def build_product_snapshot(product: Product) -> dict:
@@ -304,9 +287,9 @@ def hard_delete_product_for_admin(*, product: Product) -> None:
     )
     if not p:
         return
-    for name in _collect_product_image_names(p):
-        _delete_storage_file(name)
+    media_keys = p.get_media_keys()
     p.delete()
+    schedule_media_deletion_from_keys(media_keys)
 
 
 def hard_delete_order_for_admin(*, order: Order) -> None:
@@ -328,11 +311,13 @@ def permanent_delete_trash_item(*, trash_item: TrashItem) -> None:
             .first()
         )
         if p:
-            for name in _collect_product_image_names(p):
-                _delete_storage_file(name)
+            media_keys = p.get_media_keys()
             p.delete()
+            schedule_media_deletion_from_keys(media_keys)
         else:
-            _delete_product_media_from_snapshot(snap)
+            schedule_media_deletion_from_keys(
+                _collect_product_media_keys_from_snapshot(snap)
+            )
     elif trash_item.entity_type == TrashItem.EntityType.ORDER:
         pk = uuid.UUID(trash_item.entity_id)
         o = Order.objects.filter(store_id=store_id, pk=pk).first()
