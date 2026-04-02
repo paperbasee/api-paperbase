@@ -14,20 +14,26 @@ logger = logging.getLogger(__name__)
 
 def _lock_inventory(*, store_id: int, product_id, variant_id: int | None):
     from .models import Inventory
+    from engine.apps.products.models import Product, ProductVariant
 
-    qs = Inventory.objects.select_for_update().select_related("product", "variant")
+    # Avoid JOINs in SELECT ... FOR UPDATE on nullable relations (Postgres disallows
+    # locking the nullable side of an outer join).
+    if not Product.objects.filter(id=product_id, store_id=store_id).exists():
+        raise Inventory.DoesNotExist
+
+    qs = Inventory.objects.select_for_update()
     if variant_id is None:
         return qs.get(
             product_id=product_id,
             variant__isnull=True,
-            product__store_id=store_id,
         )
-    return qs.get(
+    inventory = qs.get(
         product_id=product_id,
         variant_id=variant_id,
-        product__store_id=store_id,
-        variant__product_id=product_id,
     )
+    if not ProductVariant.objects.filter(id=variant_id, product_id=product_id).exists():
+        raise Inventory.DoesNotExist
+    return inventory
 
 
 def adjust_inventory_stock(

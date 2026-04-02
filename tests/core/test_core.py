@@ -1,5 +1,5 @@
 import uuid as _uuid
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -2201,3 +2201,38 @@ class CustomerAggregationFromOrderTests(TestCase):
         customer.refresh_from_db()
         self.assertEqual(customer.id, matched.id)
         self.assertEqual(customer.email, "now@example.com")
+
+
+class R2DeletionTaskTests(TestCase):
+    def test_delete_r2_objects_stops_retry_storm_on_missing_bucket(self):
+        from botocore.exceptions import ClientError
+
+        from engine.core.tasks import delete_r2_objects
+
+        client = Mock()
+        client.delete_objects.side_effect = ClientError(
+            error_response={"Error": {"Code": "NoSuchBucket", "Message": "bucket not found"}},
+            operation_name="DeleteObjects",
+        )
+
+        with patch("engine.core.tasks._get_r2_delete_client", return_value=client):
+            with self.settings(AWS_STORAGE_BUCKET_NAME="missing-bucket"):
+                deleted = delete_r2_objects.run(["media/tenants/str_x/products/prd_y/main.jpg"])
+
+        self.assertEqual(deleted, 0)
+
+    def test_delete_r2_objects_raises_other_client_errors(self):
+        from botocore.exceptions import ClientError
+
+        from engine.core.tasks import delete_r2_objects
+
+        client = Mock()
+        client.delete_objects.side_effect = ClientError(
+            error_response={"Error": {"Code": "AccessDenied", "Message": "denied"}},
+            operation_name="DeleteObjects",
+        )
+
+        with patch("engine.core.tasks._get_r2_delete_client", return_value=client):
+            with self.settings(AWS_STORAGE_BUCKET_NAME="ok-bucket"):
+                with self.assertRaises(ClientError):
+                    delete_r2_objects.run(["media/tenants/str_x/branding/logo.jpg"])

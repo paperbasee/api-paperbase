@@ -4,6 +4,7 @@ import logging
 from collections.abc import Iterable
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
 
 from config.celery import app
@@ -37,7 +38,7 @@ def purge_expired_trash_task() -> int:
 
 @app.task(
     bind=True,
-    autoretry_for=(Exception,),
+    autoretry_for=(BotoCoreError,),
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
@@ -62,10 +63,21 @@ def delete_r2_objects(self, keys: list[str]) -> int:
     client = _get_r2_delete_client()
     deleted_count = 0
     for batch in _chunks(normalized, R2_DELETE_BATCH_SIZE):
-        resp = client.delete_objects(
-            Bucket=bucket,
-            Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
-        )
+        try:
+            resp = client.delete_objects(
+                Bucket=bucket,
+                Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
+            )
+        except ClientError as exc:
+            error_code = (exc.response or {}).get("Error", {}).get("Code", "")
+            # Permanent configuration/runtime issue: retries only add queue noise.
+            if error_code == "NoSuchBucket":
+                logger.error(
+                    "R2 cleanup skipped: configured bucket does not exist",
+                    extra={"bucket": bucket},
+                )
+                return deleted_count
+            raise
         deleted_count += len(resp.get("Deleted", []) or [])
         # Log and continue: delete must remain idempotent even with partial failures.
         errors = resp.get("Errors", []) or []
