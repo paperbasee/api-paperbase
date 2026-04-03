@@ -507,6 +507,9 @@ def test_cancelled_status_restores_stock_once_per_item():
     item = OrderItem(
         order=order,
         product=product,
+        product_name_snapshot=product.name,
+        variant_snapshot=None,
+        unit_price_snapshot=Decimal("0.00"),
         quantity=2,
         unit_price=Decimal("0.00"),
         original_price=Decimal("0.00"),

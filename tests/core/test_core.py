@@ -128,6 +128,17 @@ def _make_order_item(order, product, *, quantity=1, variant=None, unit_price=Non
         order=order,
         product=product,
         variant=variant,
+        product_name_snapshot=product.name,
+        variant_snapshot=(
+            (
+                getattr(variant, "name", None)
+                or getattr(variant, "sku", None)
+                or variant.public_id
+            )
+            if variant
+            else None
+        ),
+        unit_price_snapshot=Decimal("0.00"),
         quantity=quantity,
         unit_price=Decimal("0.00"),
         original_price=Decimal("0.00"),
@@ -1383,7 +1394,7 @@ class CrossTenantAdminIsolationTests(TestCase):
         self.assertEqual(len(resp.data["items"]), 1)
         item = resp.data["items"][0]
         self.assertIsNone(item["product"])
-        self.assertEqual(item["product_name"], "Unavailable")
+        self.assertEqual(item["product_name"], "Product A")
         self.assertEqual(item["status"], "deleted")
 
     # ------------------------------------------------------------------

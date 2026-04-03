@@ -13,6 +13,7 @@ from engine.apps.shipping.models import ShippingMethod, ShippingZone
 from engine.apps.products.variant_utils import unit_price_for_line
 from engine.apps.orders.order_financials import money, reference_unit_price
 from engine.apps.orders.services import (
+    build_variant_snapshot_text,
     recalculate_order_totals,
     resolve_active_store_product,
     resolve_active_variant_for_product,
@@ -63,13 +64,19 @@ class AdminOrderItemSerializer(SafeModelSerializer):
         model = OrderItem
         fields = [
             'public_id', 'product', 'product_public_id', 'product_name', 'product_brand', 'product_image',
+            'product_name_snapshot', 'variant_snapshot', 'unit_price_snapshot',
             'status',
             'is_unavailable',
             'variant_public_id', 'variant_sku', 'variant_inventory_quantity', 'variant_option_labels',
             'quantity', 'unit_price', 'original_price', 'discount_amount', 'line_subtotal', 'line_total',
             'catalog_unit_price', 'catalog_list_price',
         ]
-        read_only_fields = ['public_id']
+        read_only_fields = [
+            'public_id',
+            'product_name_snapshot',
+            'variant_snapshot',
+            'unit_price_snapshot',
+        ]
 
     def get_product(self, obj):
         if not obj.product:
@@ -83,7 +90,7 @@ class AdminOrderItemSerializer(SafeModelSerializer):
         return obj.product.public_id if obj.product else None
 
     def get_product_name(self, obj):
-        return obj.product.name if obj.product else "Unavailable"
+        return obj.product_name_snapshot
 
     def get_product_brand(self, obj):
         return obj.product.brand if obj.product else ""
@@ -465,6 +472,9 @@ class AdminOrderUpdateSerializer(SafeModelSerializer):
                         order=instance,
                         product=product_obj,
                         variant=variant_obj,
+                        product_name_snapshot=product_obj.name,
+                        variant_snapshot=build_variant_snapshot_text(variant_obj),
+                        unit_price_snapshot=chosen,
                         quantity=qty,
                         unit_price=Decimal("0.00"),
                         original_price=Decimal("0.00"),
@@ -623,6 +633,9 @@ class AdminOrderCreateSerializer(SafeModelSerializer):
                     order=order,
                     product=product_obj,
                     variant=variant_obj,
+                    product_name_snapshot=product_obj.name,
+                    variant_snapshot=build_variant_snapshot_text(variant_obj),
+                    unit_price_snapshot=chosen,
                     quantity=quantity,
                     unit_price=Decimal("0.00"),
                     original_price=Decimal("0.00"),

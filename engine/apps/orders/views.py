@@ -21,7 +21,11 @@ from .serializers import (
     OrderSerializer,
     StorefrontOrderReceiptSerializer,
 )
-from .services import recalculate_order_totals, resolve_and_attach_customer
+from .services import (
+    build_variant_snapshot_text,
+    recalculate_order_totals,
+    resolve_and_attach_customer,
+)
 from .utils import get_next_order_number
 from .stock import adjust_stock
 from .throttles import DirectOrderRateThrottle
@@ -241,6 +245,9 @@ class OrderCreateView(CreateAPIView):
                 order=order,
                 product=product,
                 variant=variant,
+                product_name_snapshot=product.name,
+                variant_snapshot=build_variant_snapshot_text(variant),
+                unit_price_snapshot=fin["unit_price"],
                 quantity=quantity,
                 **fin,
             )

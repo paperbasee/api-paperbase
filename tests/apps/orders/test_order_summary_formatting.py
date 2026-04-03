@@ -106,6 +106,9 @@ class BuildStructuredSummaryTests(TestCase):
         OrderItem.objects.create(
             order=o,
             product=p,
+            product_name_snapshot=p.name,
+            variant_snapshot=None,
+            unit_price_snapshot=Decimal("65.00"),
             quantity=2,
             unit_price=Decimal("65.00"),
             original_price=Decimal("65.00"),

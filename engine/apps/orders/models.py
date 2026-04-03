@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
+from django.core.exceptions import ValidationError
 
 from engine.apps.customers.models import Customer
 from engine.core.ids import generate_public_id
@@ -194,6 +195,9 @@ class OrderItem(models.Model):
         blank=True,
         related_name='order_items',
     )
+    product_name_snapshot = models.CharField(max_length=255)
+    variant_snapshot = models.CharField(max_length=255, null=True, blank=True)
+    unit_price_snapshot = models.DecimalField(max_digits=12, decimal_places=2)
     quantity = models.PositiveIntegerField()
     unit_price = models.DecimalField(
         max_digits=10,
@@ -223,6 +227,14 @@ class OrderItem(models.Model):
     )
 
     def save(self, *args, **kwargs):
+        if self.pk:
+            original = OrderItem.objects.get(pk=self.pk)
+            if (
+                original.product_name_snapshot != self.product_name_snapshot
+                or original.variant_snapshot != self.variant_snapshot
+                or original.unit_price_snapshot != self.unit_price_snapshot
+            ):
+                raise ValidationError("Snapshot fields are immutable")
         if not self.public_id:
             self.public_id = generate_public_id("orderitem")
         super().save(*args, **kwargs)

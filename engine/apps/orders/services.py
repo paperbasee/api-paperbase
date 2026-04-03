@@ -139,6 +139,30 @@ def write_order_item_financials(
     order_item.line_total = fin["line_total"]
 
 
+def build_variant_snapshot_text(variant: ProductVariant | None) -> str | None:
+    """
+    Human-readable immutable variant label for order snapshots.
+    Preference:
+    1) ordered attribute labels ("Size: XL, Color: Red")
+    2) variant SKU
+    3) variant public_id
+    """
+    if variant is None:
+        return None
+    links = (
+        variant.attribute_values.select_related("attribute_value__attribute")
+        .order_by("attribute_value__attribute__order", "attribute_value__order")
+        .all()
+    )
+    labels = [
+        f"{link.attribute_value.attribute.name}: {link.attribute_value.value}"
+        for link in links
+    ]
+    if labels:
+        return ", ".join(labels)
+    return getattr(variant, "sku", None) or variant.public_id
+
+
 def recalculate_order_totals(order: Order) -> Order:
     """
     Single source: roll up persisted line snapshots only (no Product reads).

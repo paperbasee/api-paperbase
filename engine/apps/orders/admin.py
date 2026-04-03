@@ -24,12 +24,20 @@ class OrderItemInline(admin.TabularInline):
     fields = (
         "product",
         "variant",
+        "product_name_snapshot",
+        "variant_snapshot",
+        "unit_price_snapshot",
         "quantity",
         "unit_price",
         "original_price",
         "discount_amount",
         "line_subtotal",
         "line_total",
+    )
+    readonly_fields = (
+        "product_name_snapshot",
+        "variant_snapshot",
+        "unit_price_snapshot",
     )
 
 

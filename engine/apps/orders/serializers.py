@@ -25,6 +25,7 @@ def storefront_order_line_variant_details(line: OrderItem) -> str | None:
 
 
 class OrderItemSerializer(SafeModelSerializer):
+    product = serializers.SerializerMethodField()
     product_public_id = serializers.SerializerMethodField()
     product_name = serializers.SerializerMethodField()
     status = serializers.SerializerMethodField()
@@ -37,12 +38,16 @@ class OrderItemSerializer(SafeModelSerializer):
         model = OrderItem
         fields = [
             'public_id',
+            'product',
             'product_public_id',
             'product_name',
+            'product_name_snapshot',
+            'variant_snapshot',
             'status',
             'is_unavailable',
             'quantity',
             'unit_price',
+            'unit_price_snapshot',
             'original_price',
             'discount_amount',
             'line_subtotal',
@@ -51,13 +56,26 @@ class OrderItemSerializer(SafeModelSerializer):
             'variant_sku',
             'variant_options',
         ]
-        read_only_fields = ['public_id']
+        read_only_fields = [
+            'public_id',
+            'product_name_snapshot',
+            'variant_snapshot',
+            'unit_price_snapshot',
+        ]
+
+    def get_product(self, obj):
+        if not obj.product:
+            return None
+        return {
+            "public_id": obj.product.public_id,
+            "name": obj.product.name,
+        }
 
     def get_product_public_id(self, obj):
         return obj.product.public_id if obj.product else None
 
     def get_product_name(self, obj):
-        return obj.product.name if obj.product else "Unavailable"
+        return obj.product_name_snapshot
 
     def get_status(self, obj):
         return "active" if obj.product else "deleted"
@@ -139,13 +157,12 @@ class StorefrontOrderLineReceiptSerializer(serializers.BaseSerializer):
     """Single line on a storefront receipt (no model field leakage)."""
 
     def to_representation(self, line: OrderItem) -> dict:
-        product_name = line.product.name if line.product else "Unavailable"
         return {
-            "product_name": product_name,
+            "product_name": line.product_name_snapshot,
             "quantity": line.quantity,
-            "unit_price": str(line.unit_price),
+            "unit_price": str(line.unit_price_snapshot),
             "total_price": str(line.line_total),
-            "variant_details": storefront_order_line_variant_details(line),
+            "variant_details": storefront_order_line_variant_details(line) or line.variant_snapshot,
         }
 
 
