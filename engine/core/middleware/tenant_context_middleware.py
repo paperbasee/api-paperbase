@@ -26,7 +26,13 @@ class TenantContextMiddleware(MiddlewareMixin):
             ctx = get_active_store(request)
             if getattr(request, "store", None) is None and ctx.store is not None:
                 request.store = ctx.store
-            if ctx.store and ctx.store.status == Store.Status.ACTIVE:
+            user = getattr(request, "user", None)
+            if (
+                ctx.store
+                and ctx.store.status == Store.Status.ACTIVE
+                and user is not None
+                and getattr(user, "is_authenticated", False)
+            ):
                 touch_store_activity(ctx.store)
             request.context = RequestContext(
                 tenant=ctx.store,

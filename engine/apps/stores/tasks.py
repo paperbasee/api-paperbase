@@ -119,6 +119,31 @@ def hard_delete_store(job_public_id: str) -> None:
                 job.save(update_fields=["status", "current_step", "error_message"])
                 return
 
+            now = timezone.now()
+
+            if store.status not in (Store.Status.INACTIVE, Store.Status.PENDING_DELETE):
+                job.status = StoreDeletionJob.Status.FAILED
+                job.error_message = (
+                    f"Store status is {store.status}; expected INACTIVE or PENDING_DELETE."
+                )
+                job.save(update_fields=["status", "error_message"])
+                return
+
+            if store.delete_at and store.delete_at > now:
+                job.status = StoreDeletionJob.Status.FAILED
+                job.error_message = "delete_at is in the future; not yet due."
+                job.save(update_fields=["status", "error_message"])
+                return
+
+            if store.lifecycle_version != job.lifecycle_version_snapshot:
+                job.status = StoreDeletionJob.Status.FAILED
+                job.error_message = (
+                    f"lifecycle_version mismatch: store={store.lifecycle_version}, "
+                    f"job={job.lifecycle_version_snapshot}. Store was likely restored."
+                )
+                job.save(update_fields=["status", "error_message"])
+                return
+
             job.status = StoreDeletionJob.Status.RUNNING
             job.current_step = StoreDeletionJob.STEP_REMOVING_ORDERS
             job.error_message = ""
@@ -172,6 +197,7 @@ def _process_due_store_deletions() -> None:
                 store_public_id_snapshot=store.public_id,
                 store_id_snapshot=store.id,
                 delete_at_snapshot=store.delete_at,
+                lifecycle_version_snapshot=store.lifecycle_version,
                 status=StoreDeletionJob.Status.PENDING,
                 current_step=StoreDeletionJob.STEP_REMOVING_ORDERS,
             )
@@ -183,17 +209,26 @@ def _process_due_store_deletions() -> None:
 
 
 def _scan_inactivity_stores() -> None:
+    from django.db.models import Q
+
     from engine.apps.stores.lifecycle_emails import queue_delete_scheduled
+    from engine.apps.stores.models import StoreLifecycleAuditLog
+    from engine.apps.stores.audit import write_store_lifecycle_audit
 
     now = timezone.now()
     threshold = now - timedelta(days=INACTIVITY_DAYS)
     qs = Store.objects.filter(
         status=Store.Status.ACTIVE,
-        last_activity_at__isnull=False,
-        last_activity_at__lt=threshold,
+    ).filter(
+        Q(last_activity_at__isnull=True) | Q(last_activity_at__lt=threshold),
     )
     for store in qs:
         apply_inactivity_pending_delete(store)
+        write_store_lifecycle_audit(
+            user=None,
+            store=store,
+            action=StoreLifecycleAuditLog.Action.STORE_INACTIVITY_PENDING,
+        )
         queue_delete_scheduled(store, from_inactivity=True)
 
 

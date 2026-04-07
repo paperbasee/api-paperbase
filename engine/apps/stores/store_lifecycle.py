@@ -28,6 +28,21 @@ DELETE_OTP_TTL_MINUTES = 7
 DELETE_OTP_SEND_COOLDOWN_SECONDS = 60
 DELETE_OTP_CHANNEL = "delete_schedule"
 
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    Store.Status.ACTIVE: {Store.Status.INACTIVE, Store.Status.PENDING_DELETE},
+    Store.Status.INACTIVE: {Store.Status.ACTIVE, Store.Status.PENDING_DELETE},
+    Store.Status.PENDING_DELETE: {Store.Status.ACTIVE},
+}
+
+
+def transition_store_status(store: Store, new_status: str) -> None:
+    """Enforce strict state machine and bump lifecycle_version atomically."""
+    allowed = _VALID_TRANSITIONS.get(store.status, set())
+    if new_status not in allowed:
+        raise ValueError(f"Invalid transition: {store.status} -> {new_status}")
+    store.status = new_status
+    store.lifecycle_version = (store.lifecycle_version or 0) + 1
+
 
 def _otp_digest(store_id: int, channel: str, code: str) -> str:
     raw = f"{settings.SECRET_KEY}:{store_id}:{channel}:{code}"
@@ -58,10 +73,9 @@ def remove_store(*, store: Store, user: AbstractUser) -> Store:
     if not contact:
         raise ValueError("Configure a store contact email before removing the store.")
     now = timezone.now()
-    delete_at = now + timedelta(days=INACTIVE_RETENTION_DAYS)
-    store.status = Store.Status.INACTIVE
+    transition_store_status(store, Store.Status.INACTIVE)
     store.removed_at = now
-    store.delete_at = delete_at
+    store.delete_at = now + timedelta(days=INACTIVE_RETENTION_DAYS)
     store.inactive_recovery_reminder_sent_at = None
     store.save()
     return store
@@ -72,10 +86,9 @@ def schedule_permanent_delete(*, store: Store, user: AbstractUser) -> Store:
     if store.status not in (Store.Status.ACTIVE, Store.Status.INACTIVE):
         raise ValueError("Store cannot be scheduled for deletion.")
     now = timezone.now()
-    delete_at = now + timedelta(days=PENDING_DELETE_GRACE_DAYS)
-    store.status = Store.Status.PENDING_DELETE
+    transition_store_status(store, Store.Status.PENDING_DELETE)
     store.delete_requested_at = now
-    store.delete_at = delete_at
+    store.delete_at = now + timedelta(days=PENDING_DELETE_GRACE_DAYS)
     store.pending_delete_2d_reminder_sent_at = None
     store.pending_delete_1d_reminder_sent_at = None
     store.save()
@@ -84,15 +97,14 @@ def schedule_permanent_delete(*, store: Store, user: AbstractUser) -> Store:
 
 def restore_store_after_otp(*, store: Store) -> Store:
     """Clear lifecycle fields and return to ACTIVE."""
-    store.status = Store.Status.ACTIVE
+    transition_store_status(store, Store.Status.ACTIVE)
     store.removed_at = None
     store.delete_requested_at = None
     store.delete_at = None
     store.inactive_recovery_reminder_sent_at = None
     store.pending_delete_2d_reminder_sent_at = None
     store.pending_delete_1d_reminder_sent_at = None
-    now = timezone.now()
-    store.last_activity_at = now
+    store.last_activity_at = timezone.now()
     store.save()
     return store
 
@@ -102,7 +114,7 @@ def apply_inactivity_pending_delete(store: Store) -> Store:
     if store.status != Store.Status.ACTIVE:
         return store
     now = timezone.now()
-    store.status = Store.Status.PENDING_DELETE
+    transition_store_status(store, Store.Status.PENDING_DELETE)
     store.delete_requested_at = now
     store.delete_at = now + timedelta(days=PENDING_DELETE_GRACE_DAYS)
     store.pending_delete_2d_reminder_sent_at = None

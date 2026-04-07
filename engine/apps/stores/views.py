@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -268,22 +269,23 @@ class StoreViewSet(viewsets.ModelViewSet):
                 {"detail": "Only the store owner can remove the store."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        store = ctx.store
         d = serializer.validated_data
-        if not confirm_store_name_against_store(d["store_name"], store):
+        if not confirm_store_name_against_store(d["store_name"], ctx.store):
             return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
         if not confirm_remove_phrase(d["confirmation_phrase"]):
             return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-        try:
-            remove_store(store=store, user=request.user)
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            store = Store.objects.select_for_update().get(pk=ctx.store.pk)
+            try:
+                remove_store(store=store, user=request.user)
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            write_store_lifecycle_audit(
+                user=request.user,
+                store=store,
+                action=StoreLifecycleAuditLog.Action.STORE_REMOVE,
+            )
         store.refresh_from_db()
-        write_store_lifecycle_audit(
-            user=request.user,
-            store=store,
-            action=StoreLifecycleAuditLog.Action.STORE_REMOVE,
-        )
         queue_store_removed_inactive(store)
         tokens = _reissue_jwt_after_losing_active_store(request, store.id)
         return Response(tokens)
@@ -298,7 +300,9 @@ class StoreViewSet(viewsets.ModelViewSet):
         if not m:
             return Response({"detail": "Store not found."}, status=status.HTTP_404_NOT_FOUND)
         store = m.store
-        client_key = request.META.get("REMOTE_ADDR", "") or "unknown"
+        client_key = str(request.user.pk) if request.user.is_authenticated else (
+            request.META.get("REMOTE_ADDR", "") or "unknown"
+        )
         try:
             challenge, owner_plain, contact_plain = create_restore_challenge(
                 store=store,
@@ -353,6 +357,12 @@ class StoreViewSet(viewsets.ModelViewSet):
             return Response({"complete": False, "detail": "Additional verification required."})
         prev_pending = store.status == Store.Status.PENDING_DELETE
         restore_store_after_otp(store=store)
+        write_store_lifecycle_audit(
+            user=request.user,
+            store=store,
+            action=StoreLifecycleAuditLog.Action.STORE_RESTORE,
+            metadata={"previous_status": "pending_delete" if prev_pending else "inactive"},
+        )
         if prev_pending:
             queue_store_delete_cancelled(store)
         else:
@@ -488,7 +498,9 @@ class StoreSettingsViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        client_key = request.META.get("REMOTE_ADDR", "") or "unknown"
+        client_key = str(request.user.pk) if request.user.is_authenticated else (
+            request.META.get("REMOTE_ADDR", "") or "unknown"
+        )
         try:
             challenge, plain = create_deletion_schedule_otp_challenge(
                 store=store,
@@ -520,11 +532,9 @@ class StoreSettingsViewSet(
         serializer.is_valid(raise_exception=True)
 
         ctx = get_active_store(request)
-        store = ctx.store
-        membership = ctx.membership
-        if not store or not membership:
+        if not ctx.store or not ctx.membership:
             return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
-        if membership.role != StoreMembership.Role.OWNER:
+        if ctx.membership.role != StoreMembership.Role.OWNER:
             return Response(
                 {"detail": "Only the store owner can delete the store."},
                 status=status.HTTP_403_FORBIDDEN,
@@ -532,7 +542,7 @@ class StoreSettingsViewSet(
 
         challenge = StoreDeletionOtpChallenge.objects.filter(
             public_id=serializer.validated_data["challenge_public_id"],
-            store=store,
+            store=ctx.store,
             user=request.user,
         ).first()
         if not challenge:
@@ -546,42 +556,59 @@ class StoreSettingsViewSet(
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
-        if store.status == Store.Status.PENDING_DELETE:
-            StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
-            return Response(
-                {"detail": "Permanent deletion is already scheduled for this store."},
-                status=status.HTTP_400_BAD_REQUEST,
+        with transaction.atomic():
+            store = Store.objects.select_for_update().get(pk=ctx.store.pk)
+
+            if store.status == Store.Status.PENDING_DELETE:
+                StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
+                return Response(
+                    {"detail": "Permanent deletion is already scheduled for this store."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            existing_job = StoreDeletionJob.objects.filter(
+                store_id_snapshot=store.id,
+                status=StoreDeletionJob.Status.PENDING,
+            ).first()
+            if existing_job:
+                StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
+                tokens = _reissue_jwt_after_losing_active_store(request, store.id)
+                return Response(
+                    {
+                        "job_id": existing_job.public_id,
+                        "scheduled_delete_at": store.delete_at.isoformat() if store.delete_at else None,
+                        **tokens,
+                    },
+                    status=status.HTTP_200_OK,
+                )
+
+            try:
+                schedule_permanent_delete(store=store, user=request.user)
+            except ValueError as exc:
+                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+            job = StoreDeletionJob.objects.create(
+                user=request.user,
+                store_public_id_snapshot=store.public_id,
+                store_id_snapshot=store.id,
+                delete_at_snapshot=store.delete_at,
+                lifecycle_version_snapshot=store.lifecycle_version,
+                status=StoreDeletionJob.Status.PENDING,
+                current_step="Scheduled — permanent deletion pending",
+                redirect_route="/onboarding",
+                next_store_public_id=None,
             )
 
-        redirect_route = "/onboarding"
-        next_store_public_id = None
+            StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
 
-        try:
-            schedule_permanent_delete(store=store, user=request.user)
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+            write_store_lifecycle_audit(
+                user=request.user,
+                store=store,
+                action=StoreLifecycleAuditLog.Action.STORE_DELETE_SCHEDULED,
+            )
+
         store.refresh_from_db()
-
-        job = StoreDeletionJob.objects.create(
-            user=request.user,
-            store_public_id_snapshot=store.public_id,
-            store_id_snapshot=store.id,
-            delete_at_snapshot=store.delete_at,
-            status=StoreDeletionJob.Status.PENDING,
-            current_step="Scheduled — permanent deletion pending",
-            redirect_route=redirect_route,
-            next_store_public_id=next_store_public_id,
-        )
-
         queue_delete_scheduled(store, from_inactivity=False)
-        StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
-
-        write_store_lifecycle_audit(
-            user=request.user,
-            store=store,
-            action=StoreLifecycleAuditLog.Action.STORE_DELETE_SCHEDULED,
-        )
-
         tokens = _reissue_jwt_after_losing_active_store(request, store.id)
 
         return Response(

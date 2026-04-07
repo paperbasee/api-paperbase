@@ -65,6 +65,10 @@ class Store(models.Model):
     )
     pending_delete_2d_reminder_sent_at = models.DateTimeField(null=True, blank=True)
     pending_delete_1d_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    lifecycle_version = models.PositiveIntegerField(
+        default=0,
+        help_text="Monotonic counter incremented on every status transition; guards Celery jobs.",
+    )
     is_active = models.BooleanField(default=True)
     owner = models.OneToOneField(
         settings.AUTH_USER_MODEL,
@@ -403,6 +407,10 @@ class StoreDeletionJob(models.Model):
         blank=True,
         help_text="Expected hard-delete time when the job was created (scheduled deletion).",
     )
+    lifecycle_version_snapshot = models.PositiveIntegerField(
+        default=0,
+        help_text="Store lifecycle_version at scheduling time; worker aborts if mismatch.",
+    )
 
     celery_task_id = models.CharField(max_length=255, blank=True, null=True, db_index=True)
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
@@ -446,6 +454,8 @@ class StoreLifecycleAuditLog(models.Model):
         STORE_REMOVE = "STORE_REMOVE", "Store remove"
         STORE_DELETE_OTP_SENT = "STORE_DELETE_OTP_SENT", "Delete OTP sent"
         STORE_DELETE_SCHEDULED = "STORE_DELETE_SCHEDULED", "Delete scheduled"
+        STORE_RESTORE = "STORE_RESTORE", "Store restore"
+        STORE_INACTIVITY_PENDING = "STORE_INACTIVITY_PENDING", "Inactivity pending delete"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
