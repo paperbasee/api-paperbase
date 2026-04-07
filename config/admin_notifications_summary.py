@@ -1,9 +1,10 @@
 from datetime import datetime
 
+import logging
+
 from django.core.cache import cache
 from django.db import connection
 from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -15,6 +16,9 @@ from engine.core.admin_notifications_cache import (
     notifications_summary_cache_key,
 )
 from engine.core.request_context import get_dashboard_store_from_request
+from engine.core.tenant_execution import tenant_scope_from_store
+
+logger = logging.getLogger(__name__)
 
 # Cap notification payloads (not full list PAGE_SIZE).
 RECENT_NOTIFICATION_LIMIT = 8
@@ -187,16 +191,28 @@ class AdminNotificationsSummaryView(APIView):
     def get(self, request):
         store = get_dashboard_store_from_request(request)
         if not store:
-            raise PermissionDenied("No active store resolved.")
+            logger.warning(
+                "Tenant store context missing for notifications summary.",
+                extra={
+                    "path": getattr(request, "path", ""),
+                    "user_public_id": getattr(getattr(request, "user", None), "public_id", None),
+                },
+            )
+            return Response(
+                {"detail": "Tenant (store) context is required"},
+                status=400,
+            )
 
-        cache_key = notifications_summary_cache_key(store.public_id)
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return Response(cached)
+        # Ensure strict tenant context is set before ANY queryset evaluation.
+        with tenant_scope_from_store(store=store, reason="admin:notifications_summary"):
+            cache_key = notifications_summary_cache_key(store.public_id)
+            cached = cache.get(cache_key)
+            if cached is not None:
+                return Response(cached)
 
-        payload = build_notifications_summary_payload(store)
-        cache.set(cache_key, payload, NOTIFICATIONS_SUMMARY_CACHE_TTL)
-        return Response(payload)
+            payload = build_notifications_summary_payload(store)
+            cache.set(cache_key, payload, NOTIFICATIONS_SUMMARY_CACHE_TTL)
+            return Response(payload)
 
 
 __all__ = [

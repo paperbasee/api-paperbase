@@ -1,10 +1,11 @@
 from datetime import date, timedelta
 
+import logging
+
 from django.core.cache import cache
 from django.db.models import Count
 from django.db.models.functions import TruncDate, TruncMonth, TruncWeek
 from django.utils import timezone
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -21,12 +22,15 @@ from engine.core.admin_dashboard_cache import (
     dashboard_stats_cache_key,
 )
 from engine.core.request_context import get_dashboard_store_from_request
+from engine.core.tenant_execution import tenant_scope_from_store
 
 # Tenant-scoped cache for GET admin/basic-analytics/overview/ final JSON only.
 DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS = 45
 DASHBOARD_STATS_CACHE_TTL_HISTORICAL_SECONDS = 600
 # Normalized day-bucket overview: short TTL (includes "today" in canonical window).
 DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS = 20
+
+logger = logging.getLogger(__name__)
 
 
 class BasicAnalyticsOverviewView(APIView):
@@ -188,24 +192,74 @@ class BasicAnalyticsOverviewView(APIView):
 
         store = get_dashboard_store_from_request(request)
         if not store:
-            raise PermissionDenied("No active store resolved.")
+            logger.warning(
+                "Tenant store context missing for basic analytics overview.",
+                extra={
+                    "path": getattr(request, "path", ""),
+                    "user_public_id": getattr(getattr(request, "user", None), "public_id", None),
+                },
+            )
+            return Response(
+                {"detail": "Tenant (store) context is required"},
+                status=400,
+            )
 
-        today = timezone.localdate()
-        is_live_range = end_date >= today
-        default_start = today - timedelta(days=29)
-        default_end = today
-        uses_default_range = (
-            not explicit_range
-            and start_date == default_start
-            and end_date == default_end
-        )
+        # Ensure strict tenant context is set before ANY queryset evaluation.
+        with tenant_scope_from_store(store=store, reason="admin:basic_analytics_overview"):
+            today = timezone.localdate()
+            is_live_range = end_date >= today
+            default_start = today - timedelta(days=29)
+            default_end = today
+            uses_default_range = (
+                not explicit_range
+                and start_date == default_start
+                and end_date == default_end
+            )
 
-        # Default overview: one final cached payload per bucket (no post-cache slicing).
-        if uses_default_range and bucket in ("day", "week", "month"):
-            live_key = dashboard_live_overview_cache_key(store.public_id, bucket)
-            cached = cache.get(live_key)
+            # Default overview: one final cached payload per bucket (no post-cache slicing).
+            if uses_default_range and bucket in ("day", "week", "month"):
+                live_key = dashboard_live_overview_cache_key(store.public_id, bucket)
+                cached = cache.get(live_key)
+                if cached is not None:
+                    return Response(cached)
+                payload = self._compute_payload(
+                    store=store,
+                    start_date=start_date,
+                    end_date=end_date,
+                    bucket=bucket,
+                    bucket_func=bucket_func,
+                )
+                cache.set(live_key, payload, DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS)
+                return Response(payload)
+
+            cache_key = dashboard_stats_cache_key(
+                store.public_id,
+                start_date.isoformat(),
+                end_date.isoformat(),
+                bucket,
+            )
+            cached = cache.get(cache_key)
             if cached is not None:
                 return Response(cached)
+
+            cache_ttl = (
+                DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS
+                if is_live_range
+                else DASHBOARD_STATS_CACHE_TTL_HISTORICAL_SECONDS
+            )
+
+            if bucket in ("week", "month") and not is_live_range:
+                existing = StoreDashboardStatsSnapshot.objects.filter(
+                    store=store,
+                    start_date=start_date,
+                    end_date=end_date,
+                    bucket=bucket,
+                ).first()
+                if existing and existing.payload:
+                    payload = existing.payload
+                    cache.set(cache_key, payload, cache_ttl)
+                    return Response(payload)
+
             payload = self._compute_payload(
                 store=store,
                 start_date=start_date,
@@ -213,58 +267,20 @@ class BasicAnalyticsOverviewView(APIView):
                 bucket=bucket,
                 bucket_func=bucket_func,
             )
-            cache.set(live_key, payload, DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS)
-            return Response(payload)
 
-        cache_key = dashboard_stats_cache_key(
-            store.public_id,
-            start_date.isoformat(),
-            end_date.isoformat(),
-            bucket,
-        )
-        cached = cache.get(cache_key)
-        if cached is not None:
-            return Response(cached)
-
-        cache_ttl = (
-            DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS
-            if is_live_range
-            else DASHBOARD_STATS_CACHE_TTL_HISTORICAL_SECONDS
-        )
-
-        if bucket in ("week", "month") and not is_live_range:
-            existing = StoreDashboardStatsSnapshot.objects.filter(
-                store=store,
-                start_date=start_date,
-                end_date=end_date,
-                bucket=bucket,
-            ).first()
-            if existing and existing.payload:
-                payload = existing.payload
-                cache.set(cache_key, payload, cache_ttl)
-                return Response(payload)
-
-        payload = self._compute_payload(
-            store=store,
-            start_date=start_date,
-            end_date=end_date,
-            bucket=bucket,
-            bucket_func=bucket_func,
-        )
-
-        should_snapshot = (
-            not is_live_range
-            and bucket in ("week", "month")
-            and not explicit_range
-        )
-        if should_snapshot:
-            StoreDashboardStatsSnapshot.objects.update_or_create(
-                store=store,
-                start_date=start_date,
-                end_date=end_date,
-                bucket=bucket,
-                defaults={"payload": payload},
+            should_snapshot = (
+                not is_live_range
+                and bucket in ("week", "month")
+                and not explicit_range
             )
+            if should_snapshot:
+                StoreDashboardStatsSnapshot.objects.update_or_create(
+                    store=store,
+                    start_date=start_date,
+                    end_date=end_date,
+                    bucket=bucket,
+                    defaults={"payload": payload},
+                )
 
-        cache.set(cache_key, payload, cache_ttl)
-        return Response(payload)
+            cache.set(cache_key, payload, cache_ttl)
+            return Response(payload)
