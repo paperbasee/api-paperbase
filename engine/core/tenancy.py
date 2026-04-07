@@ -35,7 +35,8 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
     1) API key-resolved request.store (storefront / tenant public APIs)
     2) Superuser: optional X-Store-Public-ID for platform tooling
     3) Authenticated store owner: request.user.owned_store (ignores client store hints)
-    4) Staff (no owned store): JWT claim active_store_public_id only (no header)
+    4) Authenticated staff/non-owner: header store hint (X-Store-ID / X-Store-Public-ID)
+    5) Staff (no owned store): JWT claim active_store_public_id only (no header)
     """
     store_from_api_key = getattr(request, "store", None)
     store: Optional[Store] = store_from_api_key
@@ -67,7 +68,25 @@ def get_active_store(request: HttpRequest) -> ActiveStoreContext:
             membership = _membership_for(user, store)
             return ActiveStoreContext(store=store, membership=membership)
 
-    # 4) Staff: JWT claim only
+    # 4) Authenticated staff/non-owner: allow explicit store selection via header.
+    #
+    # This is needed because tenant context is resolved in middleware (before DRF auth
+    # attaches request.auth), so JWT-claim-only selection would otherwise be unavailable.
+    if getattr(user, "is_authenticated", False):
+        header_store_public_id = (
+            request.headers.get("X-Store-ID")
+            or request.headers.get("x-store-id")
+            or request.headers.get("X-Store-Public-ID")
+            or request.headers.get("x-store-public-id")
+        )
+        if header_store_public_id:
+            candidate = Store.objects.filter(public_id=header_store_public_id).first()
+            if candidate:
+                membership = _membership_for(user, candidate)
+                if membership is not None:
+                    return ActiveStoreContext(store=candidate, membership=membership)
+
+    # 5) Staff: JWT claim only
     if getattr(user, "is_authenticated", False) and getattr(request, "auth", None):
         token_store_public_id = request.auth.get("active_store_public_id")  # type: ignore[union-attr]
         if token_store_public_id:
