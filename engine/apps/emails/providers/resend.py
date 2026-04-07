@@ -5,7 +5,7 @@ import json
 import requests
 from django.conf import settings
 
-from engine.apps.emails.router import resolve_email_sender
+from engine.apps.emails.router import format_from_with_display_name, resolve_email_sender
 
 from .base import BaseEmailProvider
 
@@ -33,7 +33,10 @@ class ResendEmailProvider(BaseEmailProvider):
     ):
         if not self.api_key:
             raise RuntimeError("RESEND_API_KEY is not configured.")
-        sender = (from_email or "").strip() or resolve_email_sender(email_type)
+        override = (from_email or "").strip()
+        sender = (
+            format_from_with_display_name(override) if override else resolve_email_sender(email_type)
+        )
 
         payload: dict = {
             "from": sender,

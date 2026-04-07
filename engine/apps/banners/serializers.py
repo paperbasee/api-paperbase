@@ -23,6 +23,7 @@ class PublicBannerSerializer(SafeModelSerializer):
             "cta_text",
             "cta_url",
             "order",
+            "placement_slots",
             "start_at",
             "end_at",
         ]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.core.mail import EmailMultiAlternatives
 
-from engine.apps.emails.router import resolve_email_sender
+from engine.apps.emails.router import format_from_with_display_name, resolve_email_sender
 
 from .base import BaseEmailProvider
 
@@ -27,7 +27,10 @@ class DjangoCoreMailProvider(BaseEmailProvider):
         *,
         from_email: str | None = None,
     ) -> None:
-        resolved_from = (from_email or "").strip() or resolve_email_sender(email_type)
+        override = (from_email or "").strip()
+        resolved_from = (
+            format_from_with_display_name(override) if override else resolve_email_sender(email_type)
+        )
 
         plain = (text or "").strip()
         if not plain:

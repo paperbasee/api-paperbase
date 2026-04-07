@@ -11,6 +11,7 @@ class BannerAdmin(admin.ModelAdmin):
         "title",
         "order",
         "is_active",
+        "placement_slots",
         "start_at",
         "end_at",
         "created_at",

@@ -12,9 +12,9 @@ from .models import Banner
 from .serializers import PublicBannerSerializer
 
 
-def get_active_banners(store, request):
+def get_active_banners(store, request, slot: str | None = None):
     """Return cached active banners list for the storefront, falling back to DB."""
-    key = cache_service.build_key(store.public_id, "banners", "active")
+    key = cache_service.build_key(store.public_id, "banners", "active", slot or "all")
 
     def fetcher():
         now = timezone.now()
@@ -24,6 +24,8 @@ def get_active_banners(store, request):
             .filter(Q(end_at__isnull=True) | Q(end_at__gte=now))
             .order_by("order", "id")
         )
+        if slot:
+            qs = qs.filter(placement_slots__contains=[slot])
         return PublicBannerSerializer(
             qs, many=True, context={"request": request}
         ).data

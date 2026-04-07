@@ -8,25 +8,47 @@ from engine.apps.emails.router import resolve_email_sender
 
 class EmailRouterTests(SimpleTestCase):
     def test_security_email_sender(self):
-        self.assertEqual(resolve_email_sender("PASSWORD_RESET"), "security@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("EMAIL_VERIFICATION"), "security@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("TWO_FA_RECOVERY"), "security@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("TWO_FA_DISABLE"), "security@mail.paperbase.me")
+        self.assertEqual(
+            resolve_email_sender("PASSWORD_RESET"), "Paperbase <security@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("EMAIL_VERIFICATION"), "Paperbase <security@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("TWO_FA_RECOVERY"), "Paperbase <security@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("TWO_FA_DISABLE"), "Paperbase <security@mail.paperbase.me>"
+        )
 
     def test_billing_email_sender(self):
-        self.assertEqual(resolve_email_sender("SUBSCRIPTION_PAYMENT"), "billing@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("SUBSCRIPTION_ACTIVATED"), "billing@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("SUBSCRIPTION_CHANGED"), "billing@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("PLATFORM_NEW_SUBSCRIPTION"), "billing@mail.paperbase.me")
+        self.assertEqual(
+            resolve_email_sender("SUBSCRIPTION_PAYMENT"), "Paperbase <billing@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("SUBSCRIPTION_ACTIVATED"), "Paperbase <billing@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("SUBSCRIPTION_CHANGED"), "Paperbase <billing@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("PLATFORM_NEW_SUBSCRIPTION"), "Paperbase <billing@mail.paperbase.me>"
+        )
 
     def test_transactional_email_sender(self):
-        self.assertEqual(resolve_email_sender("ORDER_CONFIRMED"), "noreply@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("ORDER_RECEIVED"), "noreply@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender("GENERIC_NOTIFICATION"), "noreply@mail.paperbase.me")
+        self.assertEqual(
+            resolve_email_sender("ORDER_CONFIRMED"), "Paperbase <noreply@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("ORDER_RECEIVED"), "Paperbase <noreply@mail.paperbase.me>"
+        )
+        self.assertEqual(
+            resolve_email_sender("GENERIC_NOTIFICATION"), "Paperbase <noreply@mail.paperbase.me>"
+        )
 
     def test_fallback_sender(self):
-        self.assertEqual(resolve_email_sender("UNKNOWN_TYPE"), "noreply@mail.paperbase.me")
-        self.assertEqual(resolve_email_sender(""), "noreply@mail.paperbase.me")
+        self.assertEqual(resolve_email_sender("UNKNOWN_TYPE"), "Paperbase <noreply@mail.paperbase.me>")
+        self.assertEqual(resolve_email_sender(""), "Paperbase <noreply@mail.paperbase.me>")
 
 
 class ResendProviderRoutingTests(SimpleTestCase):
@@ -46,6 +68,6 @@ class ResendProviderRoutingTests(SimpleTestCase):
         )
 
         payload = mock_post.call_args.kwargs["data"]
-        self.assertIn('"from": "security@mail.paperbase.me"', payload)
+        self.assertIn('"from": "Paperbase <security@mail.paperbase.me>"', payload)
         legacy_sender = "onboarding@" + "resend.dev"
         self.assertNotIn(legacy_sender, payload)

@@ -28,6 +28,9 @@ from .constants import (
 
 DEFAULT_SENDER = "noreply@mail.paperbase.me"
 
+# Shown in inbox “From” columns (e.g. “Anthropic” vs raw address) — RFC 5322 display name.
+SENDER_DISPLAY_NAME = "Paperbase"
+
 EMAIL_SENDER_MAP: dict[str, str] = {
     PASSWORD_RESET: "security@mail.paperbase.me",
     EMAIL_VERIFICATION: "security@mail.paperbase.me",
@@ -53,14 +56,31 @@ EMAIL_SENDER_MAP: dict[str, str] = {
 }
 
 
+def format_from_with_display_name(email_address: str) -> str:
+    """
+    Build a From header value so clients show SENDER_DISPLAY_NAME instead of the bare address.
+
+    If *email_address* already looks like ``Name <addr>``, it is returned unchanged.
+    """
+    raw = (email_address or "").strip()
+    if not raw:
+        raw = DEFAULT_SENDER
+    if "<" in raw:
+        _, after_lt = raw.split("<", 1)
+        if ">" in after_lt:
+            return raw
+    return f"{SENDER_DISPLAY_NAME} <{raw}>"
+
+
 def resolve_email_sender(email_type: str) -> str:
     """
     Return sender identity for a template type.
 
-    Always returns a Paperbase sender and never an empty value.
+    Always returns a Paperbase sender and never an empty value. Includes a display name
+    so inbox UIs show “Paperbase” rather than the raw mailbox address.
     """
     normalized = (email_type or "").strip()
     sender = EMAIL_SENDER_MAP.get(normalized, DEFAULT_SENDER)
     if not sender:
-        return DEFAULT_SENDER
-    return sender
+        sender = DEFAULT_SENDER
+    return format_from_with_display_name(sender)
