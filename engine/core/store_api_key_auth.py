@@ -31,9 +31,7 @@ API_KEY_EXACT_EXEMPT_PATHS = (
     "/api/v1/health/",
 )
 
-TENANT_API_KEY_REQUIRED_DETAIL = (
-    "No API key found. Create one in Settings → Networking."
-)
+TENANT_API_KEY_REQUIRED_DETAIL = "No API key found"
 
 # Kept for tests/documentation only; authorization is enforced via permission classes.
 STORE_FRONTEND_ROUTE_POLICY = (
