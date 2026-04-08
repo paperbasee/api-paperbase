@@ -13,6 +13,7 @@ from engine.core.request_context import (
     get_branding_request_cache,
     get_dashboard_store_from_request,
 )
+from engine.core.tenant_drf import ProvenTenantContextMixin
 from engine.apps.stores.models import Store, StoreSettings
 from engine.apps.stores.services import (
     get_request_store_settings_row,
@@ -30,7 +31,7 @@ from engine.apps.support.models import SupportTicket
 from engine.apps.notifications.models import StorefrontCTA
 
 
-class DashboardStatsView(APIView):
+class DashboardStatsView(ProvenTenantContextMixin, APIView):
     permission_classes = [DenyAPIKeyAccess, IsAdminUser]
     throttle_classes = [ScopedRateThrottle]
     throttle_scope = "standard_api"
