@@ -8,12 +8,7 @@ from engine.core.tenant_context import (
     get_is_platform_admin,
 )
 from engine.core.tenant_execution import in_system_scope
-from engine.core.tenant_guard import (
-    TenantIsolationError,
-    is_tenant_model,
-    strict_guard_enabled,
-    validate_tenant_query_allowed,
-)
+from engine.core.tenant_guard import strict_guard_enabled, validate_tenant_query_allowed
 
 
 class TenantAwareQuerySet(models.QuerySet):
@@ -78,10 +73,7 @@ class TenantAwareManager(models.Manager):
         if get_is_platform_admin():
             return qs
         if store is None:
-            if strict_guard_enabled() and is_tenant_model(self.model):
-                raise TenantIsolationError(
-                    f"Missing store scope for tenant model {self.model._meta.label}."
-                )
+            # No store context at import/collectstatic/admin form build; evaluation still guarded in TenantAwareQuerySet._guard.
             if strict_guard_enabled():
                 return qs
             return qs
