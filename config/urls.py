@@ -35,6 +35,7 @@ api_v1_patterns = [
     path('system-notifications/', include('engine.apps.notifications.system_urls')),
     path('support/', include('engine.apps.support.urls')),
     path('search/', StorefrontSearchView.as_view(), name='storefront-search'),
+    path('billing/', include('engine.apps.billing.urls')),
 ]
 
 urlpatterns = [

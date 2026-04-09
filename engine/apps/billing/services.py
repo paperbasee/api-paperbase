@@ -47,6 +47,7 @@ def activate_subscription(
     amount=0,
     provider="manual",
     change_reason: str = "",
+    existing_pending_payment: Payment | None = None,
 ):
     """
     Activate a new subscription for the user. Expires any current active subscription.
@@ -60,6 +61,8 @@ def activate_subscription(
         amount: Payment amount (Decimal or int/float)
         provider: Payment provider (e.g. 'manual', 'bkash', 'stripe')
         change_reason: Optional note for SUBSCRIPTION_CHANGED (e.g. admin action label)
+        existing_pending_payment: If set, this row is linked to the new subscription and
+            marked SUCCESS instead of creating a second Payment (manual checkout approval).
 
     Returns:
         The new Subscription instance.
@@ -96,18 +99,32 @@ def activate_subscription(
         source=source,
     )
 
-    # Create payment record
+    # Payment row: reuse manual checkout pending row, or create a new success record
     amount_decimal = Decimal(str(amount)) if amount is not None else Decimal("0")
-    payment = Payment.objects.create(
-        user=user,
-        subscription=subscription,
-        amount=amount_decimal,
-        currency="BDT",
-        status=Payment.Status.SUCCESS,
-        provider=provider,
-        transaction_id=None,
-        metadata={},
-    )
+    if existing_pending_payment is not None:
+        ep = existing_pending_payment
+        if ep.user_id != user.id:
+            raise ValueError("existing_pending_payment must belong to the same user.")
+        if ep.status != Payment.Status.PENDING:
+            raise ValueError("existing_pending_payment must be in PENDING status.")
+        if ep.plan_id != plan.id:
+            raise ValueError("existing_pending_payment plan must match the given plan.")
+        ep.subscription = subscription
+        ep.status = Payment.Status.SUCCESS
+        ep.save(update_fields=["subscription", "status"])
+        payment = ep
+    else:
+        payment = Payment.objects.create(
+            user=user,
+            plan=plan,
+            subscription=subscription,
+            amount=amount_decimal,
+            currency="BDT",
+            status=Payment.Status.SUCCESS,
+            provider=provider,
+            transaction_id=None,
+            metadata={},
+        )
 
     payment_receipt = subscription_payment_receipt_worth_sending(
         subscription.source, payment.amount, payment.provider

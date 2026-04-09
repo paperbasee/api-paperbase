@@ -99,6 +99,52 @@ class SubscriptionAdmin(admin.ModelAdmin):
 # ---------------------------------------------------------------------------
 
 
+@admin.action(description="Approve pending payment and activate subscription")
+def approve_pending_payment_action(modeladmin, request, queryset):
+    """Approve selected PENDING payments, activating a subscription for each user."""
+    success, skipped = 0, 0
+    for payment in queryset.select_related("user", "plan"):
+        if payment.status != Payment.Status.PENDING:
+            modeladmin.message_user(
+                request,
+                f"Payment #{payment.id} ({payment.user}) is not pending — skipped.",
+                messages.WARNING,
+            )
+            skipped += 1
+            continue
+        if not payment.plan:
+            modeladmin.message_user(
+                request,
+                f"Payment #{payment.id} ({payment.user}) has no plan linked — skipped.",
+                messages.ERROR,
+            )
+            skipped += 1
+            continue
+        try:
+            activate_subscription(
+                user=payment.user,
+                plan=payment.plan,
+                billing_cycle=payment.plan.billing_cycle,
+                duration_days=30 if payment.plan.billing_cycle == "monthly" else 365,
+                source="payment",
+                amount=payment.amount,
+                provider=payment.provider,
+                change_reason="Admin approved pending payment",
+                existing_pending_payment=payment,
+            )
+            success += 1
+        except Exception as e:
+            modeladmin.message_user(request, f"Failed for {payment.user}: {e}", messages.ERROR)
+    if success:
+        modeladmin.message_user(
+            request,
+            f"Approved {success} payment(s) and activated subscription(s).",
+            messages.SUCCESS,
+        )
+    if skipped:
+        modeladmin.message_user(request, f"{skipped} payment(s) skipped.", messages.WARNING)
+
+
 @admin.register(Payment)
 class PaymentAdmin(admin.ModelAdmin):
     list_display = (
@@ -108,6 +154,8 @@ class PaymentAdmin(admin.ModelAdmin):
         "currency",
         "status",
         "provider",
+        "plan",
+        "transaction_id",
         "subscription",
         "created_at",
     )
@@ -115,8 +163,9 @@ class PaymentAdmin(admin.ModelAdmin):
     search_fields = ("user__email", "transaction_id")
     ordering = ("-created_at",)
     readonly_fields = ("created_at",)
-    list_select_related = ("user", "subscription")
-    raw_id_fields = ("user", "subscription")
+    list_select_related = ("user", "subscription", "plan")
+    raw_id_fields = ("user", "subscription", "plan")
+    actions = [approve_pending_payment_action]
 
 
 # ---------------------------------------------------------------------------

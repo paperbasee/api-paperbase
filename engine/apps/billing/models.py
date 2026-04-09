@@ -152,6 +152,7 @@ class Payment(models.Model):
     )
 
     class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
         SUCCESS = "success", "Success"
         FAILED = "failed", "Failed"
         REFUNDED = "refunded", "Refunded"
@@ -162,11 +163,20 @@ class Payment(models.Model):
         SSLCOMMERZ = "sslcommerz", "SSLCommerz"
         MANUAL = "manual", "Manual"
         BKASH = "bkash", "bKash"
+        NAGAD = "nagad", "Nagad"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="payments",
+    )
+    plan = models.ForeignKey(
+        Plan,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pending_payments",
+        help_text="Intended plan for this payment. Set during initiation; cleared when subscription is linked.",
     )
     subscription = models.ForeignKey(
         Subscription,

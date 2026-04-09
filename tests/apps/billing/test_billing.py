@@ -1,5 +1,7 @@
 """Billing app tests."""
 
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -10,7 +12,7 @@ from engine.apps.billing.feature_gate import (
     has_feature,
     require_feature,
 )
-from engine.apps.billing.models import Plan, Subscription
+from engine.apps.billing.models import Payment, Plan, Subscription
 from engine.apps.billing.services import activate_subscription, extend_subscription, get_active_subscription
 from engine.apps.stores.models import Store, StoreApiKey, StoreMembership, StoreSettings
 from engine.apps.stores.services import allocate_unique_store_code
@@ -76,6 +78,36 @@ class BillingServicesTests(TestCase):
         self.assertEqual(sub.source, Subscription.Source.MANUAL)
         self.assertEqual(sub.payments.count(), 1)
         self.assertEqual(sub.payments.first().status, "success")
+
+    def test_activate_subscription_reuses_pending_payment_no_duplicate_row(self):
+        pending = Payment.objects.create(
+            user=self.user,
+            plan=self.plan_premium,
+            subscription=None,
+            amount=self.plan_premium.price,
+            currency="BDT",
+            status=Payment.Status.PENDING,
+            provider=Payment.Provider.MANUAL,
+            transaction_id="TXN-REUSE-TEST-001",
+            metadata={},
+        )
+        before_count = Payment.objects.filter(user=self.user).count()
+        sub = activate_subscription(
+            self.user,
+            self.plan_premium,
+            billing_cycle="monthly",
+            duration_days=30,
+            source="payment",
+            amount=pending.amount,
+            provider=pending.provider,
+            existing_pending_payment=pending,
+        )
+        pending.refresh_from_db()
+        self.assertEqual(Payment.objects.filter(user=self.user).count(), before_count)
+        self.assertEqual(pending.subscription_id, sub.id)
+        self.assertEqual(pending.status, Payment.Status.SUCCESS)
+        self.assertEqual(pending.transaction_id, "TXN-REUSE-TEST-001")
+        self.assertEqual(sub.payments.get().id, pending.id)
 
     def test_activate_subscription_expires_previous(self):
         activate_subscription(self.user, self.plan_basic, source="manual", amount=0, provider="manual")
@@ -284,6 +316,77 @@ class StoreCreationEnforcementTests(TestCase):
         resp = self._create_store_via_api(name="Second Store", owner_email="o2@example.com")
         self.assertEqual(resp.status_code, 400)
         self.assertIn("already have a store", resp.data.get("detail", ""))
+
+
+class InitiatePaymentApiTests(TestCase):
+    """POST /api/v1/billing/payment/initiate/ — switch plan before paying."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.plan_a = Plan.objects.create(
+            name="plan_a",
+            price=100,
+            billing_cycle="monthly",
+            features=_plan_features(),
+            is_active=True,
+        )
+        self.plan_b = Plan.objects.create(
+            name="plan_b",
+            price=250,
+            billing_cycle="monthly",
+            features=_plan_features(),
+            is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username="payuser",
+            email="pay@example.com",
+            password="pass",
+            is_verified=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_initiate_twice_before_txn_updates_same_pending(self):
+        r1 = self.client.post(
+            "/api/v1/billing/payment/initiate/",
+            {"plan_public_id": self.plan_a.public_id},
+            format="json",
+        )
+        self.assertEqual(r1.status_code, 201)
+        pay_id = r1.data["public_id"]
+        self.assertEqual(Decimal(str(r1.data["amount"])), self.plan_a.price)
+
+        r2 = self.client.post(
+            "/api/v1/billing/payment/initiate/",
+            {"plan_public_id": self.plan_b.public_id},
+            format="json",
+        )
+        self.assertEqual(r2.status_code, 200)
+        self.assertEqual(r2.data["public_id"], pay_id)
+        self.assertEqual(r2.data["plan"]["public_id"], self.plan_b.public_id)
+        self.assertEqual(Decimal(str(r2.data["amount"])), self.plan_b.price)
+        self.assertEqual(
+            Payment.objects.filter(user=self.user, status=Payment.Status.PENDING).count(),
+            1,
+        )
+
+    def test_initiate_blocked_after_transaction_submitted(self):
+        self.client.post(
+            "/api/v1/billing/payment/initiate/",
+            {"plan_public_id": self.plan_a.public_id},
+            format="json",
+        )
+        self.client.post(
+            "/api/v1/billing/payment/submit/",
+            {"transaction_id": "TXN-UNIQUE-001", "sender_number": ""},
+            format="json",
+        )
+        r = self.client.post(
+            "/api/v1/billing/payment/initiate/",
+            {"plan_public_id": self.plan_b.public_id},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("non_field_errors", r.data)
 
 
 class FeaturesEndpointTests(TestCase):

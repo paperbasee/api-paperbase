@@ -164,6 +164,7 @@ class APIKeyTenantEnforcementTests(TestCase):
         self.assertFalse(requires_tenant_api_key("/api/v1/admin/products/"))
         self.assertFalse(requires_tenant_api_key("/api/v1/system-notifications/active/"))
         self.assertFalse(requires_tenant_api_key("/api/v1/settings/network/api-keys/"))
+        self.assertFalse(requires_tenant_api_key("/api/v1/billing/payment/pending/"))
         self.assertTrue(requires_tenant_api_key("/api/v1/products/"))
         self.assertTrue(requires_tenant_api_key("/api/v1/categories/"))
         self.assertTrue(requires_tenant_api_key("/api/v1/support/"))

@@ -75,6 +75,11 @@ WSGI_APPLICATION = "config.wsgi.application"
 TENANT_API_PREFIX = "/api/v1/"
 TENANT_API_KEY_ENFORCE = env_bool("TENANT_API_KEY_ENFORCE", True)
 STORE_API_KEY_SECRET = os.getenv("STORE_API_KEY_SECRET", "").strip()
+
+# Manual payment receiver numbers (bKash / Nagad).
+# Set via environment variables in production.
+BKASH_NUMBER = os.getenv("BKASH_NUMBER", "").strip()
+NAGAD_NUMBER = os.getenv("NAGAD_NUMBER", "").strip()
 STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS = int(
     os.getenv("STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS", "60")
 )

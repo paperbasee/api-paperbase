@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 API_KEY_EXEMPT_PATHS = (
     "/api/v1/auth/",
     "/api/v1/admin/",
+    "/api/v1/billing/",
     "/api/v1/store/",
     "/api/v1/customers/",
     "/api/v1/system-notifications/",
