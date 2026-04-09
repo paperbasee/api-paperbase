@@ -215,6 +215,8 @@ def extend_30_days_action(modeladmin, request, queryset):
 @admin.action(description="Revoke current plan (cancel subscription)")
 def revoke_plan_action(modeladmin, request, queryset):
     from django.utils import timezone
+    from .feature_gate import invalidate_feature_config_cache
+
     success, skipped = 0, 0
     for user in queryset:
         updated = Subscription.objects.filter(
@@ -222,6 +224,7 @@ def revoke_plan_action(modeladmin, request, queryset):
             status=Subscription.Status.ACTIVE,
         ).update(status=Subscription.Status.CANCELED, updated_at=timezone.now())
         if updated:
+            invalidate_feature_config_cache(user)
             sync_order_email_notification_settings_for_user(user)
             success += 1
         else:

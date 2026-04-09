@@ -131,6 +131,7 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "engine.core.middleware.internal_override_middleware.InternalOverrideMiddleware",
     "engine.core.store_api_key_auth.TenantApiKeyMiddleware",
+    "engine.core.middleware.subscription_enforcement_middleware.SubscriptionEnforcementMiddleware",
     "engine.core.middleware.tenant_context_middleware.TenantContextMiddleware",
     "engine.core.middleware.request_scoped_cache_middleware.RequestScopedCacheMiddleware",
     "engine.core.rate_limit.ApiKeyRateLimitMiddleware",

@@ -93,6 +93,20 @@ class BillingServicesTests(TestCase):
         sub.refresh_from_db()
         self.assertEqual((sub.end_date - original_end).days, 14)
 
+    def test_extend_subscription_rejects_canceled(self):
+        sub = activate_subscription(self.user, self.plan_basic, source="manual", amount=0, provider="manual")
+        sub.status = Subscription.Status.CANCELED
+        sub.save()
+        with self.assertRaises(ValueError):
+            extend_subscription(sub, days=14)
+
+    def test_extend_subscription_rejects_expired(self):
+        sub = activate_subscription(self.user, self.plan_basic, source="manual", amount=0, provider="manual")
+        sub.status = Subscription.Status.EXPIRED
+        sub.save()
+        with self.assertRaises(ValueError):
+            extend_subscription(sub, days=14)
+
     def test_downgrade_clears_order_email_notification_settings(self):
         store = Store.objects.create(
             owner=self.user,
@@ -151,9 +165,9 @@ class FeatureGateTests(TestCase):
             is_verified=True,
         )
 
-    def test_has_feature_returns_false_without_subscription_uses_default(self):
+    def test_no_subscription_returns_empty_features(self):
         self.assertFalse(has_feature(self.user, "basic_analytics"))
-        self.assertEqual(get_limit(self.user, "max_products"), 100)
+        self.assertEqual(get_limit(self.user, "max_products"), 0)
 
     def test_has_feature_returns_true_when_subscription_has_feature(self):
         activate_subscription(self.user, self.plan_premium, source="manual", amount=0, provider="manual")
@@ -182,13 +196,13 @@ class FeatureGateTests(TestCase):
         activate_subscription(self.user, self.plan_premium, source="manual", amount=0, provider="manual")
         require_feature(self.user, "marketing_tools")
 
-    def test_expired_subscription_uses_default_plan(self):
+    def test_expired_subscription_returns_empty_features(self):
         activate_subscription(self.user, self.plan_premium, source="manual", amount=0, provider="manual")
         sub = get_active_subscription(self.user)
         sub.status = Subscription.Status.EXPIRED
         sub.save()
         self.assertFalse(has_feature(self.user, "basic_analytics"))
-        self.assertEqual(get_limit(self.user, "max_products"), 100)
+        self.assertEqual(get_limit(self.user, "max_products"), 0)
 
 
 class StoreCreationEnforcementTests(TestCase):
@@ -250,13 +264,10 @@ class StoreCreationEnforcementTests(TestCase):
         finally:
             Plan.objects.filter(name="basic").update(is_default=True)
 
-    def test_store_creation_allowed_with_default_plan_no_subscription(self):
+    def test_store_creation_blocked_without_subscription_even_with_default_plan(self):
         resp = self._create_store_via_api()
-        self.assertEqual(resp.status_code, 201)
-        self.assertEqual(Store.objects.filter(memberships__user=self.user, memberships__role="owner").count(), 1)
-        self.assertNotIn("api_key", resp.data)
-        store_pid = resp.data["public_id"]
-        self.assertEqual(StoreApiKey.objects.filter(store__public_id=store_pid).count(), 0)
+        self.assertEqual(resp.status_code, 403)
+        self.assertIn("No active subscription", resp.data.get("detail", ""))
 
     def test_store_creation_allowed_with_subscription(self):
         activate_subscription(self.user, self.plan_basic, source="manual", amount=0, provider="manual")
@@ -296,9 +307,77 @@ class FeaturesEndpointTests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-    def test_features_endpoint_returns_config(self):
+    def test_features_endpoint_returns_empty_without_subscription(self):
+        resp = self.client.get("/api/v1/auth/features/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("features", resp.data)
+        self.assertIn("limits", resp.data)
+        self.assertEqual(resp.data["features"], {})
+        self.assertEqual(resp.data["limits"], {})
+
+    def test_features_endpoint_returns_config_with_subscription(self):
+        activate_subscription(self.user, self.plan_basic, source="manual", amount=0, provider="manual")
         resp = self.client.get("/api/v1/auth/features/")
         self.assertEqual(resp.status_code, 200)
         self.assertIn("features", resp.data)
         self.assertIn("limits", resp.data)
         self.assertIn("max_products", resp.data["limits"])
+
+
+class MeSubscriptionPayloadTests(TestCase):
+    """Verify /auth/me subscription payload includes expiration fields."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.plan = Plan.objects.filter(is_default=True).first()
+        if not self.plan:
+            self.plan = Plan.objects.create(
+                name="basic",
+                price=0,
+                billing_cycle="monthly",
+                features=_plan_features(limits={"max_products": 100}),
+                is_default=True,
+                is_active=True,
+            )
+        self.user = User.objects.create_user(
+            username="meuser",
+            email="me@example.com",
+            password="pass",
+            is_verified=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_no_subscription_returns_inactive_with_zero_days(self):
+        resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(resp.status_code, 200)
+        sub = resp.data["subscription"]
+        self.assertFalse(sub["active"])
+        self.assertEqual(sub["days_remaining"], 0)
+        self.assertFalse(sub["is_expiring_soon"])
+        self.assertIsNone(sub["plan"])
+        self.assertIsNone(sub["end_date"])
+
+    def test_active_subscription_returns_days_remaining(self):
+        activate_subscription(
+            self.user, self.plan, source="manual", amount=0,
+            provider="manual", duration_days=30,
+        )
+        resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(resp.status_code, 200)
+        sub = resp.data["subscription"]
+        self.assertTrue(sub["active"])
+        self.assertEqual(sub["days_remaining"], 30)
+        self.assertFalse(sub["is_expiring_soon"])
+        self.assertIsNotNone(sub["end_date"])
+
+    def test_expiring_soon_subscription_flagged(self):
+        activate_subscription(
+            self.user, self.plan, source="manual", amount=0,
+            provider="manual", duration_days=2,
+        )
+        resp = self.client.get("/api/v1/auth/me/")
+        self.assertEqual(resp.status_code, 200)
+        sub = resp.data["subscription"]
+        self.assertTrue(sub["active"])
+        self.assertEqual(sub["days_remaining"], 2)
+        self.assertTrue(sub["is_expiring_soon"])

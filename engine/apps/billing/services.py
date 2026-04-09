@@ -149,8 +149,8 @@ def extend_subscription(subscription, days):
     """
     Extend the end_date of a subscription by the given number of days.
 
-    Only extends if the subscription is still active (status=active, end_date >= today).
-    If already expired, extends from today.
+    Raises ValueError if the subscription is not active (canceled/expired
+    subscriptions must not be resurrected via extension).
 
     Args:
         subscription: Subscription instance to extend
@@ -159,14 +159,15 @@ def extend_subscription(subscription, days):
     Returns:
         The updated Subscription instance.
     """
+    if subscription.status != Subscription.Status.ACTIVE:
+        raise ValueError(
+            f"Cannot extend a {subscription.status} subscription. "
+            "Only active subscriptions can be extended."
+        )
+
     today = bd_today()
     current_end = subscription.end_date
-
-    # If expired, extend from today; otherwise from current end_date
-    if subscription.status != Subscription.Status.ACTIVE or current_end < today:
-        new_end = today + timedelta(days=days)
-    else:
-        new_end = current_end + timedelta(days=days)
+    new_end = max(current_end, today) + timedelta(days=days)
 
     subscription.end_date = new_end
     subscription.save(update_fields=["end_date", "updated_at"])

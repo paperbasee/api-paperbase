@@ -58,8 +58,23 @@ class IsVerifiedUser(BasePermission):
         )
 
 
+class IsSubscribedUser(BasePermission):
+    """Allow only authenticated users with an active subscription."""
+
+    message = "An active subscription is required."
+
+    def has_permission(self, request, view):
+        if not request.user or not getattr(request.user, "is_authenticated", False):
+            return False
+        if getattr(request.user, "is_superuser", False):
+            return True
+        from engine.apps.billing.services import get_active_subscription
+
+        return get_active_subscription(request.user) is not None
+
+
 class IsDashboardUser(BasePermission):
-    """Allow authenticated, verified users in an active store context."""
+    """Allow authenticated, verified, subscribed users in an active store context."""
 
     def has_permission(self, request, view):
         if not request.user or not getattr(request.user, "is_authenticated", False):
@@ -71,9 +86,9 @@ class IsDashboardUser(BasePermission):
         ctx = get_active_store(request)
         if not (ctx.store and ctx.membership):
             return False
-        from engine.apps.billing.feature_gate import _get_effective_plan
+        from engine.apps.billing.services import get_active_subscription
 
-        return _get_effective_plan(request.user) is not None
+        return get_active_subscription(request.user) is not None
 
 
 class IsAdminUser(IsDashboardUser):
@@ -109,40 +124,52 @@ class DenyAPIKeyAccess(BasePermission):
 
 
 class IsStoreStaff(BasePermission):
-    """Store-aware permission for dashboard endpoints."""
+    """Store-aware permission for dashboard endpoints. Requires active subscription."""
 
     def has_permission(self, request, view):
         user = request.user
         if not getattr(user, "is_authenticated", False):
             return False
+        if getattr(user, "is_superuser", False):
+            return True
         if not getattr(user, "is_verified", False):
             return False
         ctx = get_active_store(request)
         if not ctx.store or not ctx.membership:
             return False
-        return ctx.membership.role in {
+        if ctx.membership.role not in {
             ctx.membership.Role.OWNER,
             ctx.membership.Role.ADMIN,
             ctx.membership.Role.STAFF,
-        }
+        }:
+            return False
+        from engine.apps.billing.services import get_active_subscription
+
+        return get_active_subscription(user) is not None
 
 
 class IsStoreAdmin(BasePermission):
-    """Stricter permission for store administration operations."""
+    """Stricter permission for store administration. Requires active subscription."""
 
     def has_permission(self, request, view):
         user = request.user
         if not getattr(user, "is_authenticated", False):
             return False
+        if getattr(user, "is_superuser", False):
+            return True
         if not getattr(user, "is_verified", False):
             return False
         ctx = get_active_store(request)
         if not ctx.store or not ctx.membership:
             return False
-        return ctx.membership.role in {
+        if ctx.membership.role not in {
             ctx.membership.Role.OWNER,
             ctx.membership.Role.ADMIN,
-        }
+        }:
+            return False
+        from engine.apps.billing.services import get_active_subscription
+
+        return get_active_subscription(user) is not None
 
 __all__ = [
     "can_enable_internal_override",
@@ -150,6 +177,7 @@ __all__ = [
     "IsPlatformSuperuser",
     "IsPlatformSuperuserOrStoreAdmin",
     "IsVerifiedUser",
+    "IsSubscribedUser",
     "IsDashboardUser",
     "IsAdminUser",
     "IsStorefrontAPIKey",

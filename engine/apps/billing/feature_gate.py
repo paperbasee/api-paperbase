@@ -1,8 +1,8 @@
 """
 Feature gate service. All feature/limit checks MUST go through these functions.
 
-Resolves: user -> subscription -> plan -> features JSON.
-Fallback when no subscription: use default plan (is_default=True).
+Resolves: user -> active subscription -> plan -> features JSON.
+No fallback: users without an active subscription get empty features/limits.
 
 Results are cached per-user to avoid repeated subscription/plan lookups.
 """
@@ -12,13 +12,12 @@ from rest_framework.exceptions import PermissionDenied
 
 from engine.core import cache_service
 
-from .models import Plan
-
 
 def _get_effective_plan(user):
     """
-    Return the plan effective for the user: from active subscription, or default plan.
-    Returns None if no subscription and no default plan.
+    Return the plan from the user's active subscription, or None.
+
+    No default-plan fallback — access requires an active subscription.
     """
     # Imported lazily to avoid circular import: billing.services -> emails.triggers -> feature_gate.
     from .services import get_active_subscription
@@ -26,7 +25,7 @@ def _get_effective_plan(user):
     subscription = get_active_subscription(user)
     if subscription:
         return subscription.plan
-    return Plan.objects.filter(is_default=True, is_active=True).first()
+    return None
 
 
 def _get_plan_features(plan):
@@ -69,7 +68,7 @@ def has_feature(user, feature_key):
     """
     Check if the user has access to the given feature.
 
-    Returns False if no subscription and no default plan, or if feature is missing/false.
+    Returns False if no active subscription or if the feature is missing/false.
     """
     config = get_feature_config(user)
     return config["features"].get(feature_key, False) is True

@@ -32,7 +32,7 @@ class Plan(models.Model):
     )
     is_default = models.BooleanField(
         default=False,
-        help_text="Used as fallback when user has no active subscription.",
+        help_text="Marketing/display only. Does not grant dashboard access.",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

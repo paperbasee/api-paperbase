@@ -96,6 +96,8 @@ class StoreUserAdmin(BaseUserAdmin):
     def get_queryset(self, request):
         qs = super().get_queryset(request).filter(is_superuser=False)
         today = bd_today()
+        # Display-only: shows default plan name when no active subscription.
+        # This does NOT grant access — access requires an active subscription.
         default_plan_name = (
             Plan.objects.filter(is_default=True, is_active=True)
             .values_list("name", flat=True)

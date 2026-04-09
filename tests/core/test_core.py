@@ -35,7 +35,7 @@ from engine.apps.products.models import (
 from engine.apps.orders.models import Order, OrderItem, PurchaseLedgerEntry
 from engine.apps.shipping.models import ShippingZone
 from engine.apps.orders.services import resolve_and_attach_customer
-from engine.apps.customers.models import Customer, CustomerAddress
+from engine.apps.customers.models import Customer
 from engine.apps.notifications.models import StorefrontCTA
 
 User = get_user_model()
@@ -182,7 +182,8 @@ def _make_customer(store, user):
 def _ensure_default_plan():
     """
     Create a default billing plan if one doesn't exist.
-    Required for IsDashboardUser permission which checks _get_effective_plan().
+    The default plan is display-only; access requires an active subscription
+    (use _ensure_subscription to grant one).
     """
     from engine.apps.billing.models import Plan
     plan, _ = Plan.objects.get_or_create(
@@ -200,6 +201,24 @@ def _ensure_default_plan():
         plan.is_default = True
         plan.save(update_fields=["is_default"])
     return plan
+
+
+def _ensure_subscription(user, plan=None):
+    """Give *user* an active subscription so permission checks pass."""
+    from engine.apps.billing.services import get_active_subscription, activate_subscription
+    if get_active_subscription(user) is not None:
+        return
+    if plan is None:
+        plan = _ensure_default_plan()
+    activate_subscription(
+        user=user,
+        plan=plan,
+        billing_cycle="monthly",
+        duration_days=30,
+        source="manual",
+        amount=0,
+        provider="manual",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -314,6 +333,7 @@ class SupportTicketTests(TestCase):
         self.client = APIClient()
         _ensure_default_plan()
         self.owner = make_user("owner2@example.com")
+        _ensure_subscription(self.owner)
         self.store = _make_store(
             "Tenant Store", "tenant.local", owner_email=self.owner.email
         )
@@ -443,6 +463,7 @@ class PublicIdApiTests(TestCase):
         self.client = APIClient()
         _ensure_default_plan()
         self.user = make_user("apiuser@example.com")
+        _ensure_subscription(self.user)
         self.store = _make_store(
             "API Test Store", "apitest.local", owner_email=self.user.email
         )
@@ -1001,8 +1022,13 @@ class IdrSecurityTests(TestCase):
         _ensure_default_plan()
         self.client = APIClient()
         self.store = _make_store("Security Store", "sec.local", owner_email="sec@example.com")
+        # The owner created by _make_store also needs a subscription
+        store_owner = User.objects.get(email="sec@example.com")
+        _ensure_subscription(store_owner)
         self.user_a = make_user("a@example.com")
         self.user_b = make_user("b@example.com")
+        _ensure_subscription(self.user_a)
+        _ensure_subscription(self.user_b)
         StoreMembership.objects.create(
             user=self.user_a, store=self.store, role=StoreMembership.Role.OWNER
         )
@@ -1068,6 +1094,9 @@ class CrossTenantAdminIsolationTests(TestCase):
         self.admin_a = make_user("admin-a@example.com")
         self.admin_b = make_user("admin-b@example.com")
         self.shared_user = make_user("shared-user@example.com")
+        _ensure_subscription(self.admin_a)
+        _ensure_subscription(self.admin_b)
+        _ensure_subscription(self.shared_user)
 
         self.store_a = _make_store(
             "Admin Store A", "admin-a.local", owner_email=self.admin_a.email
@@ -1618,6 +1647,12 @@ class TokenTamperingTests(TestCase):
         self.store_b = _make_store("Token Store B", "token-b.local")
 
         self.user_a = make_user("token-a@example.com")
+        _ensure_subscription(self.user_a)
+        # Also give owners created by _make_store subscriptions
+        for email in ["owner@token-a.local", "owner@token-b.local"]:
+            u = User.objects.filter(email=email).first()
+            if u:
+                _ensure_subscription(u)
         _make_membership(self.user_a, self.store_a, StoreMembership.Role.STAFF)
 
     def _auth_token(self, user):
@@ -1694,10 +1729,13 @@ class RolePermissionIsolationTests(TestCase):
         self.client = APIClient()
         _ensure_default_plan()
         self.owner = make_user("role-owner@example.com")
+        _ensure_subscription(self.owner)
         self.store = _make_store("Role Store", "role-store.local", owner_email=self.owner.email)
 
         self.staff = make_user("role-staff@example.com")
         self.admin_user = make_user("role-admin@example.com")
+        _ensure_subscription(self.staff)
+        _ensure_subscription(self.admin_user)
 
         _make_membership(self.staff, self.store, StoreMembership.Role.STAFF)
         _make_membership(self.admin_user, self.store, StoreMembership.Role.ADMIN)
@@ -1817,6 +1855,13 @@ class IDEnumerationTests(TestCase):
 
         self.admin_a = make_user("idor-a@example.com")
         self.admin_b = make_user("idor-b@example.com")
+        _ensure_subscription(self.admin_a)
+        _ensure_subscription(self.admin_b)
+        # Also give store owners subscriptions
+        for email in ["owner@idor-a.local", "owner@idor-b.local"]:
+            u = User.objects.filter(email=email).first()
+            if u:
+                _ensure_subscription(u)
 
         _make_membership(self.admin_a, self.store_a)
         _make_membership(self.admin_b, self.store_b)
