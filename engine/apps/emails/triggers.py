@@ -24,7 +24,8 @@ from .constants import (
     SUBSCRIPTION_PAYMENT,
     TWO_FA_DISABLE,
 )
-from .display_time import format_email_date_in_display_tz, format_email_datetime
+from engine.utils.time import format_bd_date, format_bd_with_label
+
 from .tasks import send_email_task, send_order_email_task
 
 
@@ -161,8 +162,8 @@ def queue_subscription_payment_email(user, subscription, payment) -> None:
             "plan_name": subscription.plan.name,
             "amount": str(payment.amount),
             "currency": payment.currency,
-            "billing_date": format_email_date_in_display_tz(subscription.end_date),
-            "payment_date": format_email_date_in_display_tz(),
+            "billing_date": format_bd_date(subscription.end_date),
+            "payment_date": format_bd_date(),
         },
     )
 
@@ -181,12 +182,12 @@ def queue_subscription_activated_email(
             "user_name": user.get_short_name() or user.email,
             "plan_name": subscription.plan.name,
             "billing_cycle": subscription.get_billing_cycle_display(),
-            "start_date": format_email_date_in_display_tz(subscription.start_date),
-            "end_date": format_email_date_in_display_tz(subscription.end_date),
+            "start_date": format_bd_date(subscription.start_date),
+            "end_date": format_bd_date(subscription.end_date),
             "subscription_status": subscription.get_status_display(),
             "amount": str(payment.amount),
             "currency": payment.currency,
-            "payment_date": format_email_date_in_display_tz(),
+            "payment_date": format_bd_date(),
             "payment_receipt_sent_separately": payment_receipt_sent_separately,
         },
     )
@@ -211,7 +212,7 @@ def queue_subscription_changed_email(
             "effective_date": effective_date,
             "change_reason": (change_reason or "").strip() or "—",
             "plan_name": subscription.plan.name,
-            "end_date": format_email_date_in_display_tz(subscription.end_date),
+            "end_date": format_bd_date(subscription.end_date),
             "subscription_status": subscription.get_status_display(),
         },
     )
@@ -235,7 +236,7 @@ def queue_platform_new_subscription_email(user, subscription) -> None:
         "plan_name": subscription.plan.name,
         "subscription_status": subscription.get_status_display(),
         "subscription_source": subscription.get_source_display(),
-        "timestamp": format_email_datetime(),
+        "timestamp": format_bd_with_label(),
     }
     for to in _platform_notification_recipients():
         if not to:
@@ -250,7 +251,7 @@ def queue_two_fa_disabled_email(user) -> None:
         {
             "user_name": user.get_short_name() or user.email,
             "user_email": user.email,
-            "disabled_at": format_email_datetime(),
+            "disabled_at": format_bd_with_label(),
         },
     )
 

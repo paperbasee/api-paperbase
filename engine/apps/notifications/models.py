@@ -6,6 +6,7 @@ from django.utils import timezone
 from engine.apps.stores.models import Store
 from engine.core.ids import generate_public_id
 from engine.core.tenant_queryset import TenantAwareManager
+from engine.utils.time import bd_calendar_date
 
 
 class StaffNotification(models.Model):
@@ -129,7 +130,7 @@ class PlatformNotification(models.Model):
         """
         if now is None:
             now = timezone.now()
-        today = timezone.localtime(now).date()
+        today = bd_calendar_date(now)
         view_today = NotificationDismissal.objects.filter(
             user=user,
             notification_id=OuterRef("pk"),

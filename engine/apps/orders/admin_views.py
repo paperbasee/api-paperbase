@@ -4,6 +4,9 @@ from datetime import timedelta
 from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import serializers, viewsets, mixins, status
+
+from engine.utils.bd_query import filter_by_bd_date
+from engine.utils.time import bd_today
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.response import Response
@@ -70,6 +73,12 @@ class AdminOrderViewSet(
         if self.action == "destroy":
             return [DenyAPIKeyAccess(), IsPlatformSuperuserOrStoreAdmin()]
         return super().get_permissions()
+
+    def destroy(self, request, *args, **kwargs):
+        return Response(
+            {"detail": "Method \"DELETE\" not allowed."},
+            status=status.HTTP_405_METHOD_NOT_ALLOWED,
+        )
 
     @action(detail=False, methods=["post"], url_path="pricing-preview")
     def pricing_preview(self, request):
@@ -171,13 +180,20 @@ class AdminOrderViewSet(
             return qs.none()
         qs = qs.filter(store=ctx.store)
 
+        customer_public_id = (
+            (self.request.query_params.get("customer") or "").strip()
+            or (self.request.query_params.get("customer_public_id") or "").strip()
+        )
+        if customer_public_id:
+            qs = qs.filter(customer__public_id=customer_public_id)
+
         status_value = (self.request.query_params.get("status") or "").strip().lower()
         if status_value in ALLOWED_ORDER_STATUSES:
             qs = qs.filter(status=status_value)
 
         date_range = (self.request.query_params.get("date_range") or "").strip().lower()
         if date_range == "today":
-            qs = qs.filter(created_at__date=timezone.localdate())
+            qs = filter_by_bd_date(qs, "created_at", bd_today())
         elif date_range == "last_7_days":
             qs = qs.filter(created_at__gte=timezone.now() - timedelta(days=7))
         elif date_range == "last_30_days":

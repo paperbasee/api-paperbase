@@ -3,6 +3,8 @@ from django.db.models import F
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework.response import Response
+
+from engine.utils.time import bd_calendar_date
 from rest_framework.views import APIView
 
 from config.permissions import DenyAPIKeyAccess, IsDashboardUser
@@ -36,7 +38,7 @@ class DismissSystemNotificationView(ProvenTenantContextMixin, APIView):
     def post(self, request, public_id, *args, **kwargs):
         notification = get_object_or_404(PlatformNotification, public_id=public_id)
         now = timezone.now()
-        today = timezone.localtime(now).date()
+        today = bd_calendar_date(now)
         with transaction.atomic():
             obj, _ = NotificationDismissal.objects.get_or_create(
                 user=request.user,

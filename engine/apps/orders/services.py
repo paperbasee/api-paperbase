@@ -1,8 +1,11 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db import IntegrityError
 from django.db import transaction
 from django.db.models import F
+from django.db.models.functions import Greatest
+from django.db.models import Max, Min
+from django.utils import timezone
 from rest_framework.exceptions import ValidationError
 
 from engine.apps.customers.models import Customer
@@ -76,9 +79,6 @@ def resolve_and_attach_customer(
             order.customer = customer
             order.save(update_fields=["customer"])
 
-        if not had_customer:
-            Customer.objects.filter(pk=customer.pk, store=store).update(total_orders=F("total_orders") + 1)
-            customer.refresh_from_db(fields=["total_orders"])
         return customer
 
 
@@ -305,6 +305,89 @@ def apply_order_status_change(
                 if restore_log.quantity != int(item.quantity):
                     restore_log.quantity = int(item.quantity)
                     restore_log.save(update_fields=["quantity"])
+
+        # Customer aggregate rollups are updated *only* on status transitions to keep the
+        # customer row lightweight, avoid duplication, and ensure idempotency.
+        if locked.customer_id:
+            customer = (
+                Customer.objects.select_for_update()
+                .filter(pk=locked.customer_id, store_id=locked.store_id)
+                .first()
+            )
+            if customer:
+                now = timezone.now()
+
+                def _recompute_derived_fields() -> None:
+                    customer.is_repeat_customer = bool((customer.total_orders or 0) > 1)
+                    if (customer.total_orders or 0) <= 1:
+                        customer.avg_order_interval_days = None
+                        return
+                    if not customer.first_order_at or not customer.last_order_at:
+                        customer.avg_order_interval_days = None
+                        return
+                    span = customer.last_order_at - customer.first_order_at
+                    days = Decimal(str(span.total_seconds())) / Decimal("86400")
+                    denom = Decimal(int(customer.total_orders) - 1)
+                    customer.avg_order_interval_days = (days / denom).quantize(
+                        Decimal("0.01"),
+                        rounding=ROUND_HALF_UP,
+                    )
+
+                # pending/other -> confirmed: increment once
+                if to_status == Order.Status.CONFIRMED and from_status != Order.Status.CONFIRMED:
+                    items_total = locked.subtotal_after_discount
+                    customer.total_orders = int(customer.total_orders or 0) + 1
+                    customer.total_spent = (customer.total_spent or Decimal("0.00")) + items_total
+                    customer.last_order_at = now
+                    if customer.first_order_at is None:
+                        customer.first_order_at = now
+                    _recompute_derived_fields()
+                    customer.save(
+                        update_fields=[
+                            "total_orders",
+                            "total_spent",
+                            "first_order_at",
+                            "last_order_at",
+                            "is_repeat_customer",
+                            "avg_order_interval_days",
+                            "updated_at",
+                        ]
+                    )
+                # confirmed -> cancelled: rollback once (bounded at 0) and recompute timestamps
+                elif from_status == Order.Status.CONFIRMED and to_status == Order.Status.CANCELLED:
+                    items_total = locked.subtotal_after_discount
+                    customer.total_orders = max(int(customer.total_orders or 0) - 1, 0)
+                    customer.total_spent = max(
+                        (customer.total_spent or Decimal("0.00")) - items_total,
+                        Decimal("0.00"),
+                    )
+
+                    # Recompute first/last from remaining CONFIRMED orders only.
+                    # We exclude the current order because it is being cancelled.
+                    agg = (
+                        Order.objects.filter(
+                            store_id=locked.store_id,
+                            customer_id=locked.customer_id,
+                            status=Order.Status.CONFIRMED,
+                        )
+                        .exclude(pk=locked.pk)
+                        .aggregate(first=Min("updated_at"), last=Max("updated_at"))
+                    )
+                    customer.first_order_at = agg["first"]
+                    customer.last_order_at = agg["last"]
+
+                    _recompute_derived_fields()
+                    customer.save(
+                        update_fields=[
+                            "total_orders",
+                            "total_spent",
+                            "first_order_at",
+                            "last_order_at",
+                            "is_repeat_customer",
+                            "avg_order_interval_days",
+                            "updated_at",
+                        ]
+                    )
 
         locked.status = to_status
         locked.save(update_fields=["status", "updated_at"])

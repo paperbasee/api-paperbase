@@ -16,7 +16,7 @@ from engine.apps.accounts.models import (
     UserTwoFactorRecoveryCode,
 )
 from engine.apps.emails.constants import TWO_FA_RECOVERY
-from engine.apps.emails.display_time import format_email_datetime
+from engine.utils.time import format_bd_with_label
 from engine.apps.emails.tasks import send_email_task
 from engine.core.rate_limit_service import enforce_rate_limit, record_action
 from engine.core.tenancy import get_active_store
@@ -176,7 +176,7 @@ def request_recovery_code(user):
         {
             "user_name": user.get_short_name() or user.email,
             "code": plain,
-            "expires_at": format_email_datetime(expires_at),
+            "expires_at": format_bd_with_label(expires_at),
         },
     )
     record_action(None, "2fa_recovery_request", user.email)

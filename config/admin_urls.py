@@ -16,7 +16,7 @@ from engine.core.admin_views import AdminActivityLogViewSet
 from engine.core.admin_trash_views import AdminTrashViewSet
 from engine.apps.inventory.admin_views import AdminInventoryViewSet, AdminStockMovementViewSet
 from engine.apps.banners.admin_views import AdminBannerViewSet
-from engine.apps.customers.admin_views import AdminCustomerViewSet, AdminCustomerAddressViewSet
+from engine.apps.customers.admin_views import AdminCustomerViewSet
 from engine.apps.shipping.admin_views import (
     AdminShippingZoneViewSet,
     AdminShippingMethodViewSet,
@@ -55,7 +55,6 @@ router.register(r'inventory', AdminInventoryViewSet, basename='admin-inventory')
 router.register(r'stock-movements', AdminStockMovementViewSet, basename='admin-stock-movements')
 router.register(r'banners', AdminBannerViewSet, basename='admin-banners')
 router.register(r'customers', AdminCustomerViewSet, basename='admin-customers')
-router.register(r'customer-addresses', AdminCustomerAddressViewSet, basename='admin-customer-addresses')
 router.register(r'shipping-zones', AdminShippingZoneViewSet, basename='admin-shipping-zones')
 router.register(r'shipping-methods', AdminShippingMethodViewSet, basename='admin-shipping-methods')
 router.register(r'shipping-rates', AdminShippingRateViewSet, basename='admin-shipping-rates')

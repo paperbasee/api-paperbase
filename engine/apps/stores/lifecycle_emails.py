@@ -13,7 +13,7 @@ from engine.apps.emails.constants import (
     STORE_RESTORED,
     STORE_REMOVED_INACTIVE,
 )
-from engine.apps.emails.display_time import format_email_datetime
+from engine.utils.time import format_bd_with_label
 from engine.apps.emails.tasks import send_email_task
 
 from .models import Store
@@ -44,7 +44,7 @@ def owner_email_only(store: Store) -> str | None:
 def queue_store_removed_inactive(store: Store) -> None:
     ctx = {
         "store_name": store.name,
-        "delete_at": format_email_datetime(store.delete_at) if store.delete_at else "",
+        "delete_at": format_bd_with_label(store.delete_at) if store.delete_at else "",
         "message": (
             "has been removed and is now inactive. You can recover it within 30 days from the dashboard."
         ),
@@ -57,7 +57,7 @@ def queue_store_removed_inactive(store: Store) -> None:
 def queue_inactive_recovery_reminder(store: Store) -> None:
     ctx = {
         "store_name": store.name,
-        "delete_at": format_email_datetime(store.delete_at) if store.delete_at else "",
+        "delete_at": format_bd_with_label(store.delete_at) if store.delete_at else "",
         "message": "Restore your store from the dashboard to keep your data.",
     }
     owner = owner_email_only(store)
@@ -68,7 +68,7 @@ def queue_inactive_recovery_reminder(store: Store) -> None:
 def queue_delete_scheduled(store: Store, *, from_inactivity: bool = False) -> None:
     ctx = {
         "store_name": store.name,
-        "delete_at": format_email_datetime(store.delete_at) if store.delete_at else "",
+        "delete_at": format_bd_with_label(store.delete_at) if store.delete_at else "",
         "message": (
             "Your store is queued for permanent deletion. You can still restore it from the dashboard "
             "before the date above."
@@ -85,7 +85,7 @@ def queue_delete_scheduled(store: Store, *, from_inactivity: bool = False) -> No
 def queue_pending_delete_2d(store: Store) -> None:
     ctx = {
         "store_name": store.name,
-        "delete_at": format_email_datetime(store.delete_at) if store.delete_at else "",
+        "delete_at": format_bd_with_label(store.delete_at) if store.delete_at else "",
         "message": "Restore your store from the dashboard if you want to keep it.",
     }
     owner = owner_email_only(store)
@@ -96,7 +96,7 @@ def queue_pending_delete_2d(store: Store) -> None:
 def queue_pending_delete_1d(store: Store) -> None:
     ctx = {
         "store_name": store.name,
-        "delete_at": format_email_datetime(store.delete_at) if store.delete_at else "",
+        "delete_at": format_bd_with_label(store.delete_at) if store.delete_at else "",
         "message": "This is your last chance to restore from the dashboard.",
     }
     owner = owner_email_only(store)

@@ -319,12 +319,7 @@ def permanent_delete_trash_item(*, trash_item: TrashItem) -> None:
                 _collect_product_media_keys_from_snapshot(snap)
             )
     elif trash_item.entity_type == TrashItem.EntityType.ORDER:
-        pk = uuid.UUID(trash_item.entity_id)
-        o = Order.objects.filter(store_id=store_id, pk=pk).first()
-        if o:
-            store_public_id = o.store.public_id
-            o.delete()
-            invalidate_notifications_and_dashboard_caches(store_public_id)
+        raise ValidationError("Orders cannot be permanently deleted via the trash system.")
     trash_item.delete()
 
 
@@ -509,7 +504,7 @@ def restore_trash_item(*, trash_item: TrashItem, store: Store) -> None:
     if locked.entity_type == TrashItem.EntityType.PRODUCT:
         _restore_product_from_snapshot(store=store, snapshot=snap)
     elif locked.entity_type == TrashItem.EntityType.ORDER:
-        _restore_order_from_snapshot(store=store, snapshot=snap)
+        raise ValidationError("Orders cannot be restored via the trash system.")
     else:
         raise ValidationError("Unknown entity type.")
     entity_type = locked.entity_type

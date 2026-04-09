@@ -148,34 +148,47 @@ class TrashOrderSoftDeleteTests(TestCase):
     def _auth(self):
         login_dashboard_jwt(self.client, self.owner.email)
 
-    def test_order_delete_creates_trash(self):
+    def test_order_delete_returns_405(self):
         self._auth()
         oid = self.order.public_id
         resp = self.client.delete(f"/api/v1/admin/orders/{oid}/")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(
             TrashItem.objects.filter(store=self.store, entity_type=TrashItem.EntityType.ORDER).count(),
-            1,
+            0,
         )
 
-    def test_superuser_order_delete_no_trash(self):
+    def test_superuser_order_delete_returns_405(self):
         su = make_user("trash-order-su@example.com", is_staff=True, is_superuser=True)
         self.client.force_authenticate(user=su)
         self.client.credentials(HTTP_X_STORE_PUBLIC_ID=self.store.public_id)
         oid = self.order.public_id
         resp = self.client.delete(f"/api/v1/admin/orders/{oid}/")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(resp.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
         self.assertEqual(TrashItem.objects.filter(store=self.store).count(), 0)
 
-    def test_order_trash_list_includes_entity_name(self):
+    def test_trash_endpoints_cannot_restore_or_permanently_delete_orders(self):
         self._auth()
-        oid = self.order.public_id
-        onum = self.order.order_number
-        resp = self.client.delete(f"/api/v1/admin/orders/{oid}/")
-        self.assertEqual(resp.status_code, status.HTTP_204_NO_CONTENT)
+        tr = TrashItem.objects.create(
+            store=self.store,
+            entity_type=TrashItem.EntityType.ORDER,
+            entity_id=str(self.order.pk),
+            entity_public_id=self.order.public_id,
+            snapshot_json={"schema_version": 1, "order": {"id": str(self.order.pk)}},
+            deleted_by=self.owner,
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+
         resp = self.client.get("/api/v1/admin/trash/")
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
         results = resp.data.get("results", resp.data)
-        self.assertEqual(len(results), 1)
-        self.assertEqual(results[0]["entity_type"], TrashItem.EntityType.ORDER)
-        self.assertEqual(results[0]["entity_name"], f"Test Customer (#{onum})")
+        self.assertEqual(len(results), 0)
+
+        resp = self.client.get(f"/api/v1/admin/trash/{tr.pk}/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+        resp = self.client.post(f"/api/v1/admin/trash/{tr.pk}/restore/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)
+
+        resp = self.client.delete(f"/api/v1/admin/trash/{tr.pk}/")
+        self.assertEqual(resp.status_code, status.HTTP_404_NOT_FOUND)

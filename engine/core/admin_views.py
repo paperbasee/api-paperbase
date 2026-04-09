@@ -3,6 +3,7 @@ from datetime import date
 from rest_framework import mixins, viewsets
 
 from config.permissions import DenyAPIKeyAccess, IsDashboardUser, IsStoreAdmin
+from engine.utils.bd_query import apply_bd_date_filters
 from engine.core.tenancy import get_active_store
 from engine.core.tenant_drf import ProvenTenantContextMixin
 from .models import ActivityLog
@@ -65,21 +66,22 @@ class AdminActivityLogViewSet(
         if q:
             qs = qs.filter(summary__icontains=q)
 
-        start_date = (params.get("start_date") or "").strip()
-        if start_date:
+        start_raw = (params.get("start_date") or "").strip()
+        end_raw = (params.get("end_date") or "").strip()
+        start = None
+        end = None
+        if start_raw:
             try:
-                start = date.fromisoformat(start_date)
-                qs = qs.filter(created_at__date__gte=start)
+                start = date.fromisoformat(start_raw)
             except ValueError:
                 pass
-
-        end_date = (params.get("end_date") or "").strip()
-        if end_date:
+        if end_raw:
             try:
-                end = date.fromisoformat(end_date)
-                qs = qs.filter(created_at__date__lte=end)
+                end = date.fromisoformat(end_raw)
             except ValueError:
                 pass
+        if start is not None or end is not None:
+            qs = apply_bd_date_filters(qs, "created_at", start=start, end=end)
 
         return qs
 

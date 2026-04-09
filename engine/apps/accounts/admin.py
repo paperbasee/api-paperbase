@@ -3,6 +3,8 @@ from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.db.models import CharField, OuterRef, Subquery, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
+
+from engine.utils.time import bd_today
 from django.utils.translation import gettext_lazy as _
 
 from .models import User, SuperUser, StoreUser, UserTwoFactor
@@ -93,7 +95,7 @@ class StoreUserAdmin(BaseUserAdmin):
 
     def get_queryset(self, request):
         qs = super().get_queryset(request).filter(is_superuser=False)
-        today = timezone.localdate()
+        today = bd_today()
         default_plan_name = (
             Plan.objects.filter(is_default=True, is_active=True)
             .values_list("name", flat=True)

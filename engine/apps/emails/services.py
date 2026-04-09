@@ -7,7 +7,8 @@ from django.conf import settings
 from django.template import Context, Template
 from django.utils import timezone
 
-from .display_time import format_email_date_in_display_tz, format_email_datetime
+from engine.utils.time import format_bd_date, format_bd_with_label
+
 from .models import EmailLog, EmailTemplate
 from .template_catalog import DEFAULT_EMAIL_TEMPLATES
 
@@ -20,13 +21,14 @@ _ERROR_MAX_LEN = 8000
 
 def _normalize_email_context(obj):
     """
-    Recursively format datetime/date values for templates (DD-MM-YYYY HH:MM or DD-MM-YYYY).
+    Recursively format datetime/date values for templates.
+    Datetimes: DD-MM-YYYY HH:MM (GMT+6). Dates: DD-MM-YYYY.
     datetime is handled before date because datetime is a subclass of date.
     """
     if isinstance(obj, datetime):
-        return format_email_datetime(obj)
+        return format_bd_with_label(obj)
     if type(obj) is date:
-        return format_email_date_in_display_tz(obj)
+        return format_bd_date(obj)
     if isinstance(obj, dict):
         return {k: _normalize_email_context(v) for k, v in obj.items()}
     if isinstance(obj, list):

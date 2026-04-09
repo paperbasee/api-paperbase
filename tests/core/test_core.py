@@ -2023,7 +2023,8 @@ class CustomerAggregationFromOrderTests(TestCase):
         )
         order1.refresh_from_db()
         self.assertEqual(order1.customer_id, customer1.id)
-        self.assertEqual(customer1.total_orders, 1)
+        customer1.refresh_from_db()
+        self.assertEqual(customer1.total_orders, 0)
 
         order2 = self._create_order(self.store_a, phone="01700000000", email="")
         customer2 = resolve_and_attach_customer(
@@ -2035,7 +2036,8 @@ class CustomerAggregationFromOrderTests(TestCase):
             address="",
         )
         self.assertEqual(customer1.id, customer2.id)
-        self.assertEqual(customer2.total_orders, 2)
+        customer2.refresh_from_db()
+        self.assertEqual(customer2.total_orders, 0)
 
     def test_same_phone_different_store_creates_distinct_customers(self):
         order_a = self._create_order(self.store_a, phone="01711111111")
@@ -2152,7 +2154,7 @@ class CustomerAggregationFromOrderTests(TestCase):
         )
         customer.refresh_from_db()
         self.assertEqual(customer.id, matched.id)
-        self.assertEqual(customer.total_orders, 2)
+        self.assertEqual(customer.total_orders, 0)
 
     def test_case4_different_phone_same_email_same_name_creates_new_customer(self):
         order1 = self._create_order(self.store_a, phone="01766666661", email="same4@example.com")
@@ -2220,6 +2222,104 @@ class CustomerAggregationFromOrderTests(TestCase):
         customer.refresh_from_db()
         self.assertEqual(customer.id, matched.id)
         self.assertEqual(customer.email, "now@example.com")
+
+    def test_customer_metrics_update_only_on_confirmed_and_recompute_on_cancel(self):
+        from decimal import Decimal
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from engine.apps.orders.models import Order
+        from engine.apps.orders.services import apply_order_status_change
+
+        order1 = self._create_order(self.store_a, phone="01799999999", email="a@example.com")
+        c = resolve_and_attach_customer(
+            order1,
+            store=self.store_a,
+            name=order1.shipping_name,
+            phone=order1.phone,
+            email=order1.email,
+            address=order1.shipping_address,
+        )
+        # Ensure shipping is excluded from customer total_spent rollups.
+        order1.subtotal_after_discount = Decimal("100.00")
+        order1.shipping_cost = Decimal("25.00")
+        order1.total = Decimal("125.00")
+        order1.save(update_fields=["subtotal_after_discount", "shipping_cost", "total"])
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 0)
+        self.assertEqual(str(c.total_spent), "0.00")
+        self.assertIsNone(c.first_order_at)
+        self.assertIsNone(c.last_order_at)
+        self.assertFalse(c.is_repeat_customer)
+        self.assertIsNone(c.avg_order_interval_days)
+
+        t1 = timezone.now()
+        apply_order_status_change(order=order1, to_status=Order.Status.CONFIRMED)
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 1)
+        self.assertEqual(str(c.total_spent), "100.00")
+        self.assertIsNotNone(c.first_order_at)
+        self.assertIsNotNone(c.last_order_at)
+        self.assertFalse(c.is_repeat_customer)
+        self.assertIsNone(c.avg_order_interval_days)
+
+        # Idempotent: confirming again does not double count
+        apply_order_status_change(order=order1, to_status=Order.Status.CONFIRMED)
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 1)
+        self.assertEqual(str(c.total_spent), "100.00")
+
+        # Second confirmed order
+        order2 = self._create_order(self.store_a, phone="01799999999", email="a@example.com")
+        resolve_and_attach_customer(
+            order2,
+            store=self.store_a,
+            name=order2.shipping_name,
+            phone=order2.phone,
+            email=order2.email,
+            address=order2.shipping_address,
+        )
+        order2.subtotal_after_discount = Decimal("50.00")
+        order2.shipping_cost = Decimal("10.00")
+        order2.total = Decimal("60.00")
+        order2.save(update_fields=["subtotal_after_discount", "shipping_cost", "total"])
+
+        # Ensure a non-zero interval for avg calculation
+        later = t1 + timedelta(days=2)
+        with patch("engine.apps.orders.services.timezone.now", return_value=later):
+            apply_order_status_change(order=order2, to_status=Order.Status.CONFIRMED)
+
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 2)
+        self.assertEqual(str(c.total_spent), "150.00")
+        self.assertTrue(c.is_repeat_customer)
+        self.assertIsNotNone(c.avg_order_interval_days)
+
+        # Cancel second order: should rollback totals and recompute first/last from remaining confirmed
+        even_later = later + timedelta(days=1)
+        with patch("engine.apps.orders.services.timezone.now", return_value=even_later):
+            apply_order_status_change(order=order2, to_status=Order.Status.CANCELLED)
+
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 1)
+        self.assertEqual(str(c.total_spent), "100.00")
+        self.assertFalse(c.is_repeat_customer)
+        self.assertIsNone(c.avg_order_interval_days)
+        self.assertIsNotNone(c.first_order_at)
+        self.assertIsNotNone(c.last_order_at)
+        self.assertLessEqual(c.first_order_at, c.last_order_at)
+
+        # Cancel last remaining confirmed order: should zero out timestamps
+        with patch("engine.apps.orders.services.timezone.now", return_value=even_later + timedelta(days=1)):
+            apply_order_status_change(order=order1, to_status=Order.Status.CANCELLED)
+        c.refresh_from_db()
+        self.assertEqual(c.total_orders, 0)
+        self.assertEqual(str(c.total_spent), "0.00")
+        self.assertFalse(c.is_repeat_customer)
+        self.assertIsNone(c.avg_order_interval_days)
+        self.assertIsNone(c.first_order_at)
+        self.assertIsNone(c.last_order_at)
 
 
 class R2DeletionTaskTests(TestCase):

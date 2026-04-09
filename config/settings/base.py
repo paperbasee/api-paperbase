@@ -160,7 +160,7 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "Asia/Dhaka"
+TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 
@@ -247,7 +247,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
-CELERY_TIMEZONE = TIME_ZONE
+CELERY_TIMEZONE = "UTC"
 CELERY_BEAT_SCHEDULE = {
     "inventory-sync-product-stock-cache-hourly": {
         "task": "engine.apps.inventory.sync_product_stock_cache_all_stores",

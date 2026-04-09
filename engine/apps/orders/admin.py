@@ -92,6 +92,15 @@ class OrderAdmin(admin.ModelAdmin):
         ),
     )
 
+    def has_delete_permission(self, request, obj=None):
+        return bool(getattr(request.user, "is_superuser", False))
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if not getattr(request.user, "is_superuser", False):
+            actions.pop("delete_selected", None)
+        return actions
+
     def save_formset(self, request, form, formset, change):
         """
         When editing order items in Django admin, adjust stock based on quantity deltas.

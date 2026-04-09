@@ -1,9 +1,9 @@
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.utils import timezone
 
 from engine.core.ids import generate_public_id
+from engine.utils.time import bd_today
 
 
 class Plan(models.Model):
@@ -133,13 +133,13 @@ class Subscription(models.Model):
                 )
 
     def is_active(self) -> bool:
-        today = timezone.localdate()
+        today = bd_today()
         return self.status == self.Status.ACTIVE and self.end_date >= today
 
     def days_remaining(self) -> int:
         if not self.is_active():
             return 0
-        today = timezone.localdate()
+        today = bd_today()
         return (self.end_date - today).days
 
 

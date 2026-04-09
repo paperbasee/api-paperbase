@@ -6,6 +6,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from engine.apps.notifications.models import NotificationDismissal, PlatformNotification
+from engine.utils.time import bd_calendar_date
 from engine.apps.stores.models import Store, StoreMembership
 from engine.apps.stores.services import allocate_unique_store_code
 from tests.core.test_core import _ensure_default_plan
@@ -278,7 +279,7 @@ class SystemNotificationDismissAPITests(TestCase):
 
     def test_yesterday_exhaust_does_not_block_today(self):
         n = self._active_banner()
-        today = timezone.localtime(timezone.now()).date()
+        today = bd_calendar_date(timezone.now())
         yesterday = today - timedelta(days=1)
         NotificationDismissal.objects.create(
             user=self.staff,

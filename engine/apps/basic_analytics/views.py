@@ -4,8 +4,6 @@ import logging
 
 from django.core.cache import cache
 from django.db.models import Count
-from django.db.models.functions import TruncDate, TruncMonth, TruncWeek
-from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
@@ -24,6 +22,8 @@ from engine.core.admin_dashboard_cache import (
 )
 from engine.core.request_context import get_dashboard_store_from_request
 from engine.core.tenant_execution import tenant_scope_from_store
+from engine.utils.bd_query import filter_by_bd_date_range, trunc_created_bd
+from engine.utils.time import bd_today
 
 # Tenant-scoped cache for GET admin/basic-analytics/overview/ final JSON only.
 DASHBOARD_STATS_CACHE_TTL_LIVE_SECONDS = 45
@@ -46,7 +46,7 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
     throttle_scope = "standard_api"
 
     def _parse_date_range(self, request) -> tuple[date, date]:
-        today = timezone.localdate()
+        today = bd_today()
         default_start = today - timedelta(days=29)
 
         start_str = request.query_params.get("start_date")
@@ -69,14 +69,6 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
 
         return start_date, end_date
 
-    def _get_bucket_func(self, bucket: str):
-        bucket = (bucket or "day").lower()
-        if bucket == "week":
-            return TruncWeek
-        if bucket == "month":
-            return TruncMonth
-        return TruncDate
-
     def _compute_payload(
         self,
         *,
@@ -84,29 +76,22 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
         start_date: date,
         end_date: date,
         bucket: str,
-        bucket_func,
     ) -> dict:
-        order_qs = Order.objects.filter(
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        )
-        product_qs = Product.objects.filter(
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        )
-        support_ticket_qs = SupportTicket.objects.filter(
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        )
-        customer_qs = Customer.objects.filter(
-            created_at__date__gte=start_date,
-            created_at__date__lte=end_date,
-        )
+        bucket_norm = (bucket or "day").lower()
+        period_expr = trunc_created_bd("created_at", bucket_norm)
 
-        order_qs = order_qs.filter(store=store)
-        product_qs = product_qs.filter(store=store)
-        support_ticket_qs = support_ticket_qs.filter(store=store)
-        customer_qs = customer_qs.filter(store=store)
+        order_qs = filter_by_bd_date_range(
+            Order.objects.filter(store=store), "created_at", start_date, end_date
+        )
+        product_qs = filter_by_bd_date_range(
+            Product.objects.filter(store=store), "created_at", start_date, end_date
+        )
+        support_ticket_qs = filter_by_bd_date_range(
+            SupportTicket.objects.filter(store=store), "created_at", start_date, end_date
+        )
+        customer_qs = filter_by_bd_date_range(
+            Customer.objects.filter(store=store), "created_at", start_date, end_date
+        )
 
         summary = {
             "totalOrders": order_qs.count(),
@@ -119,7 +104,7 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
 
         def _update_series(qs, key: str):
             for row in (
-                qs.annotate(period=bucket_func("created_at"))
+                qs.annotate(period=period_expr)
                 .values("period")
                 .annotate(total=Count("id"))
                 .order_by("period")
@@ -149,7 +134,7 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
         series = sorted(series_map.values(), key=lambda x: x["label"])
 
         # Ensure full date coverage for day bucket by filling gaps with zeros.
-        if (bucket or "day").lower() == "day":
+        if bucket_norm == "day":
             filled_series = []
             current = start_date
             end_inclusive = end_date
@@ -184,7 +169,6 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
     def get(self, request):
         start_date, end_date = self._parse_date_range(request)
         bucket = (request.query_params.get("bucket", "day") or "day").lower()
-        bucket_func = self._get_bucket_func(bucket)
         explicit_range = bool(
             request.query_params.get("start_date")
             or request.query_params.get("end_date")
@@ -206,7 +190,7 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
 
         # Ensure strict tenant context is set before ANY queryset evaluation.
         with tenant_scope_from_store(store=store, reason="admin:basic_analytics_overview"):
-            today = timezone.localdate()
+            today = bd_today()
             is_live_range = end_date >= today
             default_start = today - timedelta(days=29)
             default_end = today
@@ -227,7 +211,6 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
                     start_date=start_date,
                     end_date=end_date,
                     bucket=bucket,
-                    bucket_func=bucket_func,
                 )
                 cache.set(live_key, payload, DASHBOARD_LIVE_OVERVIEW_TTL_SECONDS)
                 return Response(payload)
@@ -265,7 +248,6 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
                 start_date=start_date,
                 end_date=end_date,
                 bucket=bucket,
-                bucket_func=bucket_func,
             )
 
             should_snapshot = (

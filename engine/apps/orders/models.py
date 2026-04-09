@@ -141,6 +141,14 @@ class Order(models.Model):
         display_id = self.order_number or str(self.id)[:8]
         return f"Order {display_id}"
 
+    @property
+    def items_total(self) -> Decimal:
+        """
+        Product-only order total (excludes shipping). This is the amount used for
+        customer `total_spent` rollups.
+        """
+        return self.subtotal_after_discount
+
 
 class OrderAddress(models.Model):
     """Shipping or billing address snapshot for an order."""

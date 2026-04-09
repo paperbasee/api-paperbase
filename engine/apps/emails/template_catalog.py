@@ -164,7 +164,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "<p>This email confirms we successfully received your payment for your subscription.</p>"
             "<p><strong>Plan</strong> {{ plan_name }}<br />"
             "<strong>Amount paid</strong> {{ amount }} {{ currency }}<br />"
-            "<strong>Payment date</strong> {{ payment_date }} (GMT+6)<br />"
+            "<strong>Payment date</strong> {{ payment_date }}<br />"
             "<strong>Current period ends</strong> {{ billing_date }}</p>"
             "<p>Keep this message for your records. The same details may appear on your card or bank statement "
             "under the name of our payment processor.</p>"
@@ -176,7 +176,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "Payment receipt — subscription\n\n"
             "Plan: {{ plan_name }}\n"
             "Amount: {{ amount }} {{ currency }}\n"
-            "Payment date: {{ payment_date }} (GMT+6)\n"
+            "Payment date: {{ payment_date }}\n"
             "Current subscription period ends: {{ billing_date }}\n\n"
             "Retain this email for your records.\n"
             "If you did not authorize this charge, contact support right away.\n"
@@ -194,7 +194,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "{% if payment_receipt_sent_separately %}"
             "<p>You should also receive a separate email with your payment receipt for this transaction.</p>"
             "{% else %}"
-            "<p>Recent payment (if any): {{ amount }} {{ currency }} on {{ payment_date }} (GMT+6).</p>"
+            "<p>Recent payment (if any): {{ amount }} {{ currency }} on {{ payment_date }}.</p>"
             "{% endif %}"
             "<p>To change your plan, update payment details, or cancel renewal, use the billing section of your account. "
             "You will receive email confirmations for important billing events.</p>"
@@ -209,7 +209,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "{% if payment_receipt_sent_separately %}"
             "A separate email contains your payment receipt.\n"
             "{% else %}"
-            "Payment on record: {{ amount }} {{ currency }} ({{ payment_date }} GMT+6).\n"
+            "Payment on record: {{ amount }} {{ currency }} on {{ payment_date }}.\n"
             "{% endif %}\n"
             "Manage your plan and payment method from your account billing settings.\n"
         ),
@@ -251,7 +251,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "{% if user_full_name != store_owner_email %}{{ user_full_name }}<br />{% endif %}"
             "{{ store_owner_email }}<br />"
             "{% if user_public_id %}User ID: {{ user_public_id }}{% endif %}</p>"
-            "<p><strong>Event time</strong> {{ timestamp }} (GMT+6)</p>"
+            "<p><strong>Event time</strong> {{ timestamp }}</p>"
             "<p>Use this summary for support, fraud review, or revenue operations as needed.</p>"
         ),
         "text_body": (
@@ -266,7 +266,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "{{ user_full_name }}\n{{ store_owner_email }}\n"
             "{% endif %}"
             "{% if user_public_id %}User ID: {{ user_public_id }}\n{% endif %}\n"
-            "Time: {{ timestamp }} (GMT+6)\n"
+            "Time: {{ timestamp }}\n"
         ),
     },
     TWO_FA_DISABLE: {
@@ -274,7 +274,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
         "html_body": (
             "<p>Hello {{ user_name|default:user_email }},</p>"
             "<p>Two-factor authentication (2FA) was <strong>disabled</strong> for your account.</p>"
-            "<p><strong>When</strong> {{ disabled_at }} (GMT+6)</p>"
+            "<p><strong>When</strong> {{ disabled_at }}</p>"
             "<p>Only someone with access to your password could have done this. If it was you, no action is needed. "
             "If you did not turn off 2FA, sign in as soon as you can, turn 2FA back on, change your password, "
             "and contact support.</p>"
@@ -282,7 +282,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
         "text_body": (
             "Hello {{ user_name|default:user_email }},\n\n"
             "Two-factor authentication was disabled for your account.\n"
-            "Time: {{ disabled_at }} (GMT+6)\n\n"
+            "Time: {{ disabled_at }}\n\n"
             "If this was not you, secure your account immediately: sign in, re-enable 2FA, change your password, "
             "and contact support.\n"
         ),
@@ -294,7 +294,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
             "<p>You asked for a one-time recovery code to regain access to your account when your authenticator "
             "app is unavailable.</p>"
             "<p><strong>Your code</strong><br /><strong>{{ code }}</strong></p>"
-            "<p><strong>Expires</strong> {{ expires_at }} (GMT+6)</p>"
+            "<p><strong>Expires</strong> {{ expires_at }}</p>"
             "<ul>"
             "<li>Enter this code only on our official sign-in or recovery screen.</li>"
             "<li>Each new request invalidates any previous unused code.</li>"
@@ -305,7 +305,7 @@ DEFAULT_EMAIL_TEMPLATES: dict[str, dict[str, str]] = {
         "text_body": (
             "Hello {{ user_name|default:'there' }},\n\n"
             "Your one-time recovery code: {{ code }}\n"
-            "Expires: {{ expires_at }} (GMT+6)\n\n"
+            "Expires: {{ expires_at }}\n\n"
             "Use it only on our official site. A new request replaces any old unused code. Do not share this code.\n\n"
             "If you did not request it, change your password and contact support.\n"
         ),

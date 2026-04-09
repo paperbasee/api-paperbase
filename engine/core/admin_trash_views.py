@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import mixins, serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.response import Response
 
 from config.permissions import DenyAPIKeyAccess, IsPlatformSuperuserOrStoreAdmin
@@ -76,7 +76,7 @@ class AdminTrashViewSet(
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
-        qs = qs.filter(store=ctx.store)
+        qs = qs.filter(store=ctx.store).exclude(entity_type=TrashItem.EntityType.ORDER)
         if self.action == "list":
             raw = (self.request.query_params.get("include_restored") or "").lower()
             if raw not in ("1", "true", "yes"):
@@ -87,6 +87,8 @@ class AdminTrashViewSet(
         ctx = get_active_store(self.request)
         if not ctx.store or instance.store_id != ctx.store.id:
             raise PermissionDenied(detail="You do not have permission to delete this trash item.")
+        if instance.entity_type == TrashItem.EntityType.ORDER:
+            raise NotFound()
         if instance.is_restored:
             instance.delete()
             return
@@ -98,6 +100,8 @@ class AdminTrashViewSet(
         ctx = get_active_store(request)
         if not ctx.store or instance.store_id != ctx.store.id:
             raise PermissionDenied(detail="You do not have permission to restore this item.")
+        if instance.entity_type == TrashItem.EntityType.ORDER:
+            raise NotFound()
         if instance.is_restored:
             return Response(
                 {"detail": "This item was already restored."},
