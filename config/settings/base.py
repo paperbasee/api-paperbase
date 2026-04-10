@@ -97,6 +97,9 @@ TENANT_GUARD_STRICT_DEV = env_bool("TENANT_GUARD_STRICT_DEV", env_bool("CI", Fal
 # Client IP: Django request.META key (e.g. HTTP_X_FORWARDED_FOR). Must match trusted ingress.
 TRUSTED_IP_HEADER = (os.getenv("TRUSTED_IP_HEADER", "HTTP_X_FORWARDED_FOR") or "HTTP_X_FORWARDED_FOR").strip()
 
+# Cloudflare Turnstile (login/register). Server-side secret only; leave unset to skip checks locally.
+TURNSTILE_SECRET_KEY = os.getenv("TURNSTILE_SECRET_KEY", "").strip()
+
 # Storefront rate limits (per minute, fixed window) — see engine.core.rate_limit
 TENANT_STOREFRONT_RATE_LIMIT_PER_IP_PER_MIN = int(
     os.getenv("TENANT_STOREFRONT_RATE_LIMIT_PER_IP_PER_MIN", "100")

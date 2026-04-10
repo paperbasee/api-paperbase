@@ -52,6 +52,7 @@ from .throttles import (
     PasswordResetRateThrottle,
     RegisterRateThrottle,
 )
+from .turnstile import verify_turnstile_request
 
 User = get_user_model()
 
@@ -196,6 +197,10 @@ class StoreAwareTokenObtainPairView(views.APIView):
     throttle_classes = [] if getattr(settings, "TESTING", False) else [LoginRateThrottle]
 
     def post(self, request):
+        ok, turnstile_err = verify_turnstile_request(request)
+        if not ok:
+            return Response({"detail": turnstile_err}, status=status.HTTP_400_BAD_REQUEST)
+
         email = (request.data.get("email") or "").strip().lower()
         password = request.data.get("password") or ""
         if not email or not password:
@@ -237,7 +242,14 @@ class RegisterView(views.APIView):
     throttle_classes = [RegisterRateThrottle]
 
     def post(self, request):
-        serializer = RegisterSerializer(data=request.data)
+        ok, turnstile_err = verify_turnstile_request(request)
+        if not ok:
+            return Response({"detail": turnstile_err}, status=status.HTTP_400_BAD_REQUEST)
+
+        reg_payload = request.data.copy()
+        reg_payload.pop("cf_turnstile_response", None)
+        reg_payload.pop("cf-turnstile-response", None)
+        serializer = RegisterSerializer(data=reg_payload)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         user = serializer.save()
