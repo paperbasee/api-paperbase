@@ -15,16 +15,22 @@ from engine.core import cache_service
 
 def _get_effective_plan(user):
     """
-    Return the plan from the user's active subscription, or None.
+    Return the plan from the user's subscription for dashboard feature UI.
 
-    No default-plan fallback — access requires an active subscription.
+    ACTIVE/GRACE: paid access row. EXPIRED: last candidate row so dashboard limits/features
+    match the lapsed plan (storefront APIs are blocked separately).
     """
     # Imported lazily to avoid circular import: billing.services -> emails.triggers -> feature_gate.
     from .services import get_active_subscription
+    from .subscription_status import get_candidate_subscription_row, get_user_subscription_status
 
     subscription = get_active_subscription(user)
     if subscription:
         return subscription.plan
+    if get_user_subscription_status(user) == "EXPIRED":
+        sub = get_candidate_subscription_row(user)
+        if sub:
+            return sub.plan
     return None
 
 

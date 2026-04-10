@@ -161,23 +161,31 @@ class MeSerializer(SafeModelSerializer):
         ).exists()
 
     def get_subscription(self, obj):
-        from engine.apps.billing.services import get_active_subscription
-        sub = get_active_subscription(obj)
-        if not sub:
+        from engine.apps.billing.subscription_status import (
+            get_candidate_subscription_row,
+            get_user_subscription_status,
+            storefront_blocks_at,
+        )
+
+        st = get_user_subscription_status(obj)
+        sub = get_candidate_subscription_row(obj)
+        if st == "NONE":
             return {
-                "active": False,
+                "subscription_status": "NONE",
                 "plan": None,
+                "plan_public_id": None,
                 "end_date": None,
                 "days_remaining": 0,
-                "is_expiring_soon": False,
+                "storefront_blocks_at": None,
             }
-        days = sub.days_remaining()
+
         return {
-            "active": True,
-            "plan": sub.plan.name,
-            "end_date": sub.end_date.isoformat(),
-            "days_remaining": days,
-            "is_expiring_soon": days <= 3,
+            "subscription_status": st,
+            "plan": sub.plan.name if sub else None,
+            "plan_public_id": sub.plan.public_id if sub else None,
+            "end_date": sub.end_date.isoformat() if sub else None,
+            "days_remaining": sub.days_remaining() if sub else 0,
+            "storefront_blocks_at": storefront_blocks_at(sub).isoformat() if sub else None,
         }
 
     def get_store(self, obj):

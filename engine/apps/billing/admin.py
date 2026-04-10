@@ -124,8 +124,6 @@ def approve_pending_payment_action(modeladmin, request, queryset):
             activate_subscription(
                 user=payment.user,
                 plan=payment.plan,
-                billing_cycle=payment.plan.billing_cycle,
-                duration_days=30 if payment.plan.billing_cycle == "monthly" else 365,
                 source="payment",
                 amount=payment.amount,
                 provider=payment.provider,
@@ -174,7 +172,13 @@ class PaymentAdmin(admin.ModelAdmin):
 
 
 def _get_plan(name):
-    plan = Plan.objects.filter(name__iexact=name, is_active=True).first()
+    # Admin grant actions are monthly-duration actions; avoid accidentally picking
+    # the yearly variant when both cycles exist for the same plan name.
+    plan = Plan.objects.filter(
+        name__iexact=name,
+        billing_cycle=Plan.BillingCycle.MONTHLY,
+        is_active=True,
+    ).first()
     return plan
 
 

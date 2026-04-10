@@ -1,9 +1,11 @@
 """Billing app tests."""
 
+from datetime import datetime, time, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
 
 from engine.apps.billing.feature_gate import (
@@ -14,6 +16,13 @@ from engine.apps.billing.feature_gate import (
 )
 from engine.apps.billing.models import Payment, Plan, Subscription
 from engine.apps.billing.services import activate_subscription, extend_subscription, get_active_subscription
+from engine.apps.billing.subscription_status import (
+    get_subscription_status,
+    get_user_subscription_status,
+    storefront_blocks_at,
+)
+from engine.utils.time import BD_TZ
+from engine.apps.billing.pricing import plan_charge_amount
 from engine.apps.stores.models import Store, StoreApiKey, StoreMembership, StoreSettings
 from engine.apps.stores.services import allocate_unique_store_code
 
@@ -139,6 +148,34 @@ class BillingServicesTests(TestCase):
         with self.assertRaises(ValueError):
             extend_subscription(sub, days=14)
 
+    def test_get_subscription_status_grace_and_expired(self):
+        sub = activate_subscription(
+            self.user, self.plan_basic, source="manual", amount=0, provider="manual"
+        )
+        end = sub.end_date
+        with patch("engine.apps.billing.subscription_status.bd_calendar_date") as m:
+            m.return_value = end
+            self.assertEqual(get_subscription_status(sub), "ACTIVE")
+            m.return_value = end + timedelta(days=1)
+            self.assertEqual(get_subscription_status(sub), "GRACE")
+            m.return_value = end + timedelta(days=2)
+            self.assertEqual(get_subscription_status(sub), "EXPIRED")
+
+    def test_db_expired_status_skips_grace(self):
+        sub = activate_subscription(
+            self.user, self.plan_basic, source="manual", amount=0, provider="manual"
+        )
+        sub.status = Subscription.Status.EXPIRED
+        sub.save(update_fields=["status"])
+        self.assertEqual(get_subscription_status(sub), "EXPIRED")
+
+    def test_storefront_blocks_at_bd_midnight_end_plus_two(self):
+        sub = activate_subscription(
+            self.user, self.plan_basic, source="manual", amount=0, provider="manual"
+        )
+        expected = datetime.combine(sub.end_date + timedelta(days=2), time.min, tzinfo=BD_TZ)
+        self.assertEqual(storefront_blocks_at(sub), expected)
+
     def test_downgrade_clears_order_email_notification_settings(self):
         store = Store.objects.create(
             owner=self.user,
@@ -228,13 +265,14 @@ class FeatureGateTests(TestCase):
         activate_subscription(self.user, self.plan_premium, source="manual", amount=0, provider="manual")
         require_feature(self.user, "marketing_tools")
 
-    def test_expired_subscription_returns_empty_features(self):
+    def test_expired_subscription_row_still_resolves_plan_for_dashboard_features(self):
+        """Dashboard keeps last plan limits for UI; storefront is blocked separately."""
         activate_subscription(self.user, self.plan_premium, source="manual", amount=0, provider="manual")
         sub = get_active_subscription(self.user)
         sub.status = Subscription.Status.EXPIRED
         sub.save()
-        self.assertFalse(has_feature(self.user, "basic_analytics"))
-        self.assertEqual(get_limit(self.user, "max_products"), 0)
+        self.assertTrue(has_feature(self.user, "basic_analytics"))
+        self.assertEqual(get_limit(self.user, "max_products"), 500)
 
 
 class StoreCreationEnforcementTests(TestCase):
@@ -353,7 +391,7 @@ class InitiatePaymentApiTests(TestCase):
         )
         self.assertEqual(r1.status_code, 201)
         pay_id = r1.data["public_id"]
-        self.assertEqual(Decimal(str(r1.data["amount"])), self.plan_a.price)
+        self.assertEqual(Decimal(str(r1.data["amount"])), plan_charge_amount(self.plan_a))
 
         r2 = self.client.post(
             "/api/v1/billing/payment/initiate/",
@@ -363,7 +401,7 @@ class InitiatePaymentApiTests(TestCase):
         self.assertEqual(r2.status_code, 200)
         self.assertEqual(r2.data["public_id"], pay_id)
         self.assertEqual(r2.data["plan"]["public_id"], self.plan_b.public_id)
-        self.assertEqual(Decimal(str(r2.data["amount"])), self.plan_b.price)
+        self.assertEqual(Decimal(str(r2.data["amount"])), plan_charge_amount(self.plan_b))
         self.assertEqual(
             Payment.objects.filter(user=self.user, status=Payment.Status.PENDING).count(),
             1,
@@ -426,6 +464,58 @@ class FeaturesEndpointTests(TestCase):
         self.assertIn("limits", resp.data)
         self.assertIn("max_products", resp.data["limits"])
 
+    def test_features_endpoint_200_when_subscription_expired_dashboard(self):
+        """Dashboard JWT features stay available; storefront API key is blocked instead."""
+        activate_subscription(
+            self.user, self.plan_basic, source="manual", amount=0, provider="manual",
+        )
+        sub = get_active_subscription(self.user)
+        self.assertIsNotNone(sub)
+        with patch("engine.apps.billing.subscription_status.bd_calendar_date") as m:
+            m.return_value = sub.end_date + timedelta(days=2)
+            resp = self.client.get("/api/v1/auth/features/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("limits", resp.data)
+
+
+@override_settings(TENANT_API_KEY_ENFORCE=True)
+class StorefrontBlocksWhenOwnerExpiredTests(TestCase):
+    """Storefront (public API key) returns subscription_expired when owner plan lapsed."""
+
+    def setUp(self):
+        self.plan_basic = Plan.objects.filter(is_default=True).first()
+        if not self.plan_basic:
+            self.plan_basic = Plan.objects.create(
+                name="basic",
+                price=0,
+                billing_cycle="monthly",
+                features=_plan_features(limits={"max_products": 100}),
+                is_default=True,
+                is_active=True,
+            )
+
+    def test_store_public_403_when_owner_subscription_expired(self):
+        from engine.apps.stores.services import create_store_api_key
+        from tests.apps.stores.test_api_keys import make_store
+
+        store = make_store("ExpiredSF")
+        activate_subscription(
+            store.owner, self.plan_basic, source="manual", amount=0, provider="manual",
+        )
+        sub = get_active_subscription(store.owner)
+        self.assertIsNotNone(sub)
+        _row, raw_key = create_store_api_key(store, name="fe")
+        client = APIClient()
+        client.credentials(HTTP_AUTHORIZATION=f"Bearer {raw_key}")
+        with patch("engine.apps.billing.subscription_status.bd_calendar_date") as m:
+            m.return_value = sub.end_date + timedelta(days=2)
+            resp = client.get("/api/v1/store/public/")
+        self.assertEqual(resp.status_code, 403)
+        body = resp.data if hasattr(resp, "data") else None
+        nested = body.get("detail", body) if isinstance(body, dict) else {}
+        if isinstance(nested, dict):
+            self.assertEqual(nested.get("error"), "subscription_expired")
+
 
 class MeSubscriptionPayloadTests(TestCase):
     """Verify /auth/me subscription payload includes expiration fields."""
@@ -450,37 +540,84 @@ class MeSubscriptionPayloadTests(TestCase):
         )
         self.client.force_authenticate(user=self.user)
 
-    def test_no_subscription_returns_inactive_with_zero_days(self):
+    def test_no_subscription_returns_none_status_with_zero_days(self):
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
         sub = resp.data["subscription"]
-        self.assertFalse(sub["active"])
+        self.assertEqual(sub["subscription_status"], "NONE")
         self.assertEqual(sub["days_remaining"], 0)
-        self.assertFalse(sub["is_expiring_soon"])
         self.assertIsNone(sub["plan"])
+        self.assertIsNone(sub["plan_public_id"])
         self.assertIsNone(sub["end_date"])
+        self.assertIsNone(sub["storefront_blocks_at"])
 
     def test_active_subscription_returns_days_remaining(self):
         activate_subscription(
             self.user, self.plan, source="manual", amount=0,
             provider="manual", duration_days=30,
         )
+        sub_row = get_active_subscription(self.user)
+        self.assertIsNotNone(sub_row)
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
         sub = resp.data["subscription"]
-        self.assertTrue(sub["active"])
+        self.assertEqual(sub["subscription_status"], "ACTIVE")
         self.assertEqual(sub["days_remaining"], 30)
-        self.assertFalse(sub["is_expiring_soon"])
         self.assertIsNotNone(sub["end_date"])
+        self.assertEqual(sub["plan_public_id"], self.plan.public_id)
+        expected = storefront_blocks_at(sub_row).isoformat()
+        self.assertEqual(sub["storefront_blocks_at"], expected)
 
-    def test_expiring_soon_subscription_flagged(self):
+
+class YearlyPricingAndValidationTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.plan_yearly = Plan.objects.create(
+            name="yearly_plan",
+            price=Decimal("650.00"),
+            billing_cycle="yearly",
+            features=_plan_features(),
+            is_active=True,
+        )
+        self.user = User.objects.create_user(
+            username="yearlyuser",
+            email="yearly@example.com",
+            password="pass",
+            is_verified=True,
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_initiate_payment_yearly_charges_12_months_upfront(self):
+        r = self.client.post(
+            "/api/v1/billing/payment/initiate/",
+            {"plan_public_id": self.plan_yearly.public_id},
+            format="json",
+        )
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual(Decimal(str(r.data["amount"])), Decimal("7800.00"))
+
+    def test_activate_subscription_rejects_payment_amount_mismatch(self):
+        with self.assertRaises(ValueError):
+            activate_subscription(
+                self.user,
+                self.plan_yearly,
+                source="payment",
+                amount=Decimal("650.00"),  # wrong; yearly must be 7800
+                provider="manual",
+            )
+
+    def test_short_subscription_still_reports_active_status(self):
         activate_subscription(
-            self.user, self.plan, source="manual", amount=0,
-            provider="manual", duration_days=2,
+            self.user,
+            self.plan_yearly,
+            source="manual",
+            amount=0,
+            provider="manual",
+            duration_days=2,
         )
         resp = self.client.get("/api/v1/auth/me/")
         self.assertEqual(resp.status_code, 200)
         sub = resp.data["subscription"]
-        self.assertTrue(sub["active"])
+        self.assertEqual(sub["subscription_status"], "ACTIVE")
         self.assertEqual(sub["days_remaining"], 2)
-        self.assertTrue(sub["is_expiring_soon"])
+        self.assertEqual(sub["plan_public_id"], self.plan_yearly.public_id)

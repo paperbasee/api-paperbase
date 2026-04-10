@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 from engine.core.authz import IsVerifiedUser
 
 from .models import Payment, Plan
+from .pricing import plan_charge_amount
 from .serializers import (
     InitiatePaymentSerializer,
     PendingPaymentSerializer,
@@ -56,6 +57,7 @@ class InitiatePaymentView(APIView):
         serializer.is_valid(raise_exception=True)
 
         plan = serializer.get_plan()
+        expected_amount = plan_charge_amount(plan)
         existing = (
             Payment.objects.filter(user=request.user, status=Payment.Status.PENDING)
             .order_by("-created_at")
@@ -63,7 +65,7 @@ class InitiatePaymentView(APIView):
         )
         if existing and not (existing.transaction_id or "").strip():
             existing.plan = plan
-            existing.amount = plan.price
+            existing.amount = expected_amount
             existing.currency = "BDT"
             existing.metadata = {}
             existing.save(update_fields=["plan", "amount", "currency", "metadata"])
@@ -73,7 +75,7 @@ class InitiatePaymentView(APIView):
             user=request.user,
             plan=plan,
             subscription=None,
-            amount=plan.price,
+            amount=expected_amount,
             currency="BDT",
             status=Payment.Status.PENDING,
             provider=Payment.Provider.MANUAL,

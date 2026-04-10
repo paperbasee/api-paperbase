@@ -43,10 +43,11 @@ def _settings_aggregate_fallback() -> int:
 
 def resolve_storefront_aggregate_limit(store: Store) -> int:
     """
-    Aggregate requests/minute per API key from the store owner's plan limits.
+    Max storefront API requests per minute (per API key) from the store owner's plan.
 
-    Uses Plan.features.limits['storefront_aggregate_rpm'] when set and positive;
-    otherwise TENANT_API_KEY_AGGREGATE_RATE_LIMIT_PER_MIN.
+    Uses Plan.features.limits['storefront_requests_per_minute'] when set and positive;
+    falls back to legacy key storefront_aggregate_rpm; otherwise
+    TENANT_API_KEY_AGGREGATE_RATE_LIMIT_PER_MIN.
     """
     fallback = _settings_aggregate_fallback()
     owner = get_store_owner_user(store)
@@ -54,7 +55,9 @@ def resolve_storefront_aggregate_limit(store: Store) -> int:
         return fallback
     cfg = get_feature_config(owner)
     limits = cfg.get("limits") or {}
-    raw = limits.get("storefront_aggregate_rpm")
+    raw = limits.get("storefront_requests_per_minute")
+    if raw is None:
+        raw = limits.get("storefront_aggregate_rpm")
     n: int | None = None
     if isinstance(raw, int) and raw > 0:
         n = raw

@@ -17,32 +17,26 @@ from engine.apps.emails.triggers import (
 from engine.apps.stores.services import sync_order_email_notification_settings_for_user
 
 from .models import Payment, Plan, Subscription
+from .pricing import billing_cycle_duration_days, plan_charge_amount, quantize_money
 
 
 def get_active_subscription(user):
     """
-    Return the single active subscription for the user, or None.
+    Return the subscription row that grants API access, or None.
 
-    Active = status='active' and end_date >= today.
+    Access = calendar ACTIVE or GRACE (1 day after end_date); not EXPIRED.
     """
-    today = bd_today()
-    return (
-        Subscription.objects.filter(
-            user=user,
-            status=Subscription.Status.ACTIVE,
-            end_date__gte=today,
-        )
-        .select_related("plan")
-        .first()
-    )
+    from .subscription_status import get_subscription_for_api_access
+
+    return get_subscription_for_api_access(user)
 
 
 @transaction.atomic
 def activate_subscription(
     user,
     plan,
-    billing_cycle="monthly",
-    duration_days=30,
+    billing_cycle=None,
+    duration_days=None,
     source="manual",
     amount=0,
     provider="manual",
@@ -67,6 +61,27 @@ def activate_subscription(
     Returns:
         The new Subscription instance.
     """
+    billing_cycle = billing_cycle or getattr(plan, "billing_cycle", None) or "monthly"
+
+    # For payments, enforce canonical duration and amount based on the plan's billing cycle.
+    expected_duration = billing_cycle_duration_days(billing_cycle)
+    if duration_days is None:
+        duration_days = expected_duration
+    elif source == Subscription.Source.PAYMENT and int(duration_days) != int(expected_duration):
+        raise ValueError(
+            f"Invalid duration_days for billing_cycle={billing_cycle!r}. "
+            f"Expected {expected_duration}, got {duration_days}."
+        )
+
+    if source == Subscription.Source.PAYMENT or existing_pending_payment is not None:
+        expected_amount = plan_charge_amount(plan)
+        amount_decimal = quantize_money(Decimal(str(amount)) if amount is not None else Decimal("0"))
+        if amount_decimal != expected_amount:
+            raise ValueError(
+                f"Payment amount mismatch for plan={plan.public_id}. "
+                f"Expected {expected_amount} BDT, got {amount_decimal} BDT."
+            )
+
     today = bd_today()
     end_date = today + timedelta(days=duration_days)
 
@@ -109,6 +124,8 @@ def activate_subscription(
             raise ValueError("existing_pending_payment must be in PENDING status.")
         if ep.plan_id != plan.id:
             raise ValueError("existing_pending_payment plan must match the given plan.")
+        if quantize_money(Decimal(str(ep.amount))) != plan_charge_amount(plan):
+            raise ValueError("existing_pending_payment amount does not match expected amount.")
         ep.subscription = subscription
         ep.status = Payment.Status.SUCCESS
         ep.save(update_fields=["subscription", "status"])

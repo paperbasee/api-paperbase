@@ -68,9 +68,9 @@ class IsSubscribedUser(BasePermission):
             return False
         if getattr(request.user, "is_superuser", False):
             return True
-        from engine.apps.billing.services import get_active_subscription
+        from engine.apps.billing.subscription_status import dashboard_subscription_access_ok
 
-        return get_active_subscription(request.user) is not None
+        return dashboard_subscription_access_ok(request.user)
 
 
 class IsDashboardUser(BasePermission):
@@ -86,9 +86,9 @@ class IsDashboardUser(BasePermission):
         ctx = get_active_store(request)
         if not (ctx.store and ctx.membership):
             return False
-        from engine.apps.billing.services import get_active_subscription
+        from engine.apps.billing.subscription_status import dashboard_subscription_access_ok
 
-        return get_active_subscription(request.user) is not None
+        return dashboard_subscription_access_ok(request.user)
 
 
 class IsAdminUser(IsDashboardUser):
@@ -101,10 +101,23 @@ class IsStorefrontAPIKey(BasePermission):
     message = "A valid storefront API key is required."
 
     def has_permission(self, request, view):
+        from rest_framework.exceptions import PermissionDenied
+
+        from engine.apps.billing.subscription_status import (
+            SUBSCRIPTION_EXPIRED_DETAIL,
+            get_user_subscription_status,
+        )
+
         api_key = getattr(request, "api_key", None)
-        if not (api_key and getattr(request, "store", None)):
+        store = getattr(request, "store", None)
+        if not (api_key and store):
             return False
-        return getattr(api_key, "key_type", None) == api_key.KeyType.PUBLIC
+        if getattr(api_key, "key_type", None) != api_key.KeyType.PUBLIC:
+            return False
+        owner = getattr(store, "owner", None)
+        if owner is not None and get_user_subscription_status(owner) == "EXPIRED":
+            raise PermissionDenied(detail=SUBSCRIPTION_EXPIRED_DETAIL)
+        return True
 
 
 class DenyAPIKeyAccess(BasePermission):
@@ -143,9 +156,9 @@ class IsStoreStaff(BasePermission):
             ctx.membership.Role.STAFF,
         }:
             return False
-        from engine.apps.billing.services import get_active_subscription
+        from engine.apps.billing.subscription_status import dashboard_subscription_access_ok
 
-        return get_active_subscription(user) is not None
+        return dashboard_subscription_access_ok(user)
 
 
 class IsStoreAdmin(BasePermission):
@@ -167,9 +180,9 @@ class IsStoreAdmin(BasePermission):
             ctx.membership.Role.ADMIN,
         }:
             return False
-        from engine.apps.billing.services import get_active_subscription
+        from engine.apps.billing.subscription_status import dashboard_subscription_access_ok
 
-        return get_active_subscription(user) is not None
+        return dashboard_subscription_access_ok(user)
 
 __all__ = [
     "can_enable_internal_override",

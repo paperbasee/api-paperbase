@@ -35,7 +35,7 @@ def test_resolve_storefront_aggregate_limit_uses_plan_limits():
         price=0,
         billing_cycle=Plan.BillingCycle.MONTHLY,
         features={
-            "limits": {"storefront_aggregate_rpm": 777},
+            "limits": {"storefront_requests_per_minute": 777},
             "features": {},
         },
         is_active=True,
@@ -73,6 +73,51 @@ def test_resolve_storefront_aggregate_limit_uses_plan_limits():
 
 
 @pytest.mark.django_db
+def test_resolve_storefront_aggregate_limit_legacy_key_storefront_aggregate_rpm():
+    """Plans still using the old limit key storefront_aggregate_rpm keep working."""
+    plan = Plan.objects.create(
+        name="legacy-rpm-plan",
+        price=0,
+        billing_cycle=Plan.BillingCycle.MONTHLY,
+        features={
+            "limits": {"storefront_aggregate_rpm": 888},
+            "features": {},
+        },
+        is_active=True,
+    )
+    user = User.objects.create_user(
+        email="legacy-rpm@example.com",
+        password="pass12345",
+        is_verified=True,
+    )
+    activate_subscription(
+        user=user,
+        plan=plan,
+        billing_cycle="monthly",
+        duration_days=30,
+        source="manual",
+        amount=0,
+        provider="manual",
+    )
+    store = Store.objects.create(
+        owner=user,
+        name="Legacy RPM Store",
+        code=allocate_unique_store_code("LRPM"),
+        owner_name="O",
+        owner_email=user.email,
+    )
+    StoreMembership.objects.create(
+        user=user,
+        store=store,
+        role=StoreMembership.Role.OWNER,
+        is_active=True,
+    )
+    invalidate_feature_config_cache(user)
+
+    assert resolve_storefront_aggregate_limit(store) == 888
+
+
+@pytest.mark.django_db
 def test_resolve_storefront_aggregate_limit_fallback_without_owner():
     """When owner cannot be resolved, use settings aggregate fallback."""
     user = User.objects.create_user(
@@ -99,7 +144,7 @@ def test_storefront_rate_check_returns_aggregate_reason():
         price=0,
         billing_cycle=Plan.BillingCycle.MONTHLY,
         features={
-            "limits": {"storefront_aggregate_rpm": 1},
+            "limits": {"storefront_requests_per_minute": 1},
             "features": {},
         },
         is_active=True,
@@ -166,7 +211,7 @@ class RateLimitMiddlewareLoggingTests(TestCase):
             price=0,
             billing_cycle=Plan.BillingCycle.MONTHLY,
             features={
-                "limits": {"storefront_aggregate_rpm": 1},
+                "limits": {"storefront_requests_per_minute": 1},
                 "features": {},
             },
             is_active=True,
