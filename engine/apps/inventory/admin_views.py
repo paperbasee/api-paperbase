@@ -40,7 +40,8 @@ class AdminInventoryViewSet(StoreRolePermissionMixin, viewsets.ModelViewSet):
         elif stock_filter == "out_of_stock":
             qs = qs.filter(quantity=0)
         elif stock_filter == "low_stock":
-            qs = qs.filter(quantity__lte=F("low_stock_threshold"))
+            # Match Inventory.is_low_stock(): tracked rows at or below per-row threshold.
+            qs = qs.filter(is_tracked=True, quantity__lte=F("low_stock_threshold"))
 
         tracked_filter = (self.request.query_params.get("tracked") or "").strip().lower()
         if tracked_filter == "tracked":
