@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.db import transaction
+from django.core.exceptions import ValidationError
 from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -67,6 +68,10 @@ from .services import (
     normalize_store_code_base_from_name,
     revoke_store_api_key,
     set_cached_store_settings,
+)
+from .deletion_validation import (
+    STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE,
+    require_store_contact_email_for_deletion,
 )
 
 User = get_user_model()
@@ -142,6 +147,13 @@ class StoreViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
             return Response({"detail": "No store."}, status=status.HTTP_404_NOT_FOUND)
         serializer = self.get_serializer(ctx.store)
         return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Store deletion is only supported through the OTP-confirmed lifecycle flow
+        under /store/settings/delete/*.
+        """
+        return Response({"detail": "Method \"DELETE\" not allowed."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def create(self, request, *args, **kwargs):
         if getattr(request.user, "owned_store", None) is not None:
@@ -503,6 +515,14 @@ class StoreSettingsViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        try:
+            require_store_contact_email_for_deletion(store=store)
+        except ValidationError:
+            return Response(
+                {"detail": STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         client_key = str(request.user.pk) if request.user.is_authenticated else (
             request.META.get("REMOTE_ADDR", "") or "unknown"
         )
@@ -563,6 +583,14 @@ class StoreSettingsViewSet(
 
         with transaction.atomic():
             store = Store.objects.select_for_update().get(pk=ctx.store.pk)
+
+            try:
+                require_store_contact_email_for_deletion(store=store)
+            except ValidationError:
+                return Response(
+                    {"detail": STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             if store.status == Store.Status.PENDING_DELETE:
                 StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from config.celery import app
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -16,6 +17,10 @@ from engine.apps.stores.lifecycle_emails import owner_email_only, queue_store_pe
 from engine.apps.stores.audit import write_store_lifecycle_audit
 from engine.apps.stores.models import Store, StoreDeletionJob
 from engine.apps.stores.services import get_store_owner_user
+from engine.apps.stores.deletion_validation import (
+    STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE,
+    require_store_contact_email_for_deletion,
+)
 from engine.apps.stores.store_lifecycle import (
     INACTIVITY_DAYS,
     LEASE_TIMEOUT_MINUTES,
@@ -232,6 +237,28 @@ def hard_delete_store(job_public_id: str, force: bool = False, reason: str | Non
                             "lifecycle_version": store.lifecycle_version,
                             "lifecycle_version_snapshot": job.lifecycle_version_snapshot,
                             "delete_at": store.delete_at.isoformat() if store.delete_at else None,
+                        },
+                    )
+                    return
+
+                try:
+                    require_store_contact_email_for_deletion(store=store)
+                except ValidationError:
+                    job.status = StoreDeletionJob.Status.FAILED
+                    job.celery_task_id = ""
+                    job.current_step = StoreDeletionJob.STEP_FINALIZING
+                    job.error_message = STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE
+                    job.save(update_fields=["status", "celery_task_id", "current_step", "error_message"])
+                    write_store_lifecycle_audit(
+                        user=getattr(job, "user", None),
+                        store=store,
+                        action="STORE_DELETE_FAILED",
+                        metadata={
+                            "job_public_id": job.public_id,
+                            "store_id_snapshot": job.store_id_snapshot,
+                            "lifecycle_version": store.lifecycle_version,
+                            "lifecycle_version_snapshot": job.lifecycle_version_snapshot,
+                            "reason": "missing_contact_email",
                         },
                     )
                     return

@@ -171,6 +171,8 @@ class DeleteStoreEndpointTests(TestCase):
         other_user = _make_user("other@example.com")
 
         store = _make_store("Store A", "store-a.local", owner_email=user.email)
+        store.contact_email = user.email
+        store.save(update_fields=["contact_email"])
         _make_owner_membership(other_user, store)
 
         _make_catalog_data(store, user)
@@ -340,6 +342,62 @@ class DeleteStoreEndpointTests(TestCase):
             "/api/v1/store/settings/delete-status/?job_id=" + str(job_id)
         )
         self.assertEqual(status_resp.status_code, 404)
+
+    def test_delete_send_otp_blocks_without_contact_email(self):
+        _set_default_plan(premium_order_emails=False)
+        user = _make_user("missing-contact@example.com")
+        store = _make_store("No Contact Store", "no-contact.local", owner_email=user.email)
+        store.contact_email = ""
+        store.save(update_fields=["contact_email"])
+        _auth_client(self.client, user.email, store_public_id=store.public_id)
+
+        with patch("engine.apps.stores.store_lifecycle._generate_otp_code", return_value="112233"):
+            resp = self.client.post(
+                "/api/v1/store/settings/delete/send-otp/",
+                {
+                    "account_email": user.email,
+                    "store_name": store.name,
+                    "confirmation_phrase": "delete my store",
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.data.get("detail"), "Add a store email before deleting your store.")
+
+    def test_hard_delete_task_blocks_without_contact_email(self):
+        _set_default_plan(premium_order_emails=False)
+        user = _make_user("hard-delete-missing-contact@example.com")
+        store = _make_store("Hard Delete Store", "hard-delete.local", owner_email=user.email)
+        store.contact_email = ""
+        store.status = Store.Status.INACTIVE
+        store.save(update_fields=["contact_email", "status"])
+
+        job = StoreDeletionJob.objects.create(
+            user=user,
+            store_public_id_snapshot=store.public_id,
+            store_id_snapshot=store.id,
+            delete_at_snapshot=store.delete_at,
+            lifecycle_version_snapshot=store.lifecycle_version,
+            status=StoreDeletionJob.Status.PENDING,
+            current_step=StoreDeletionJob.STEP_REMOVING_ORDERS,
+        )
+
+        hard_delete_store(job.public_id)
+        job.refresh_from_db()
+        self.assertEqual(job.status, StoreDeletionJob.Status.FAILED)
+        self.assertEqual(job.error_message, "Add a store email before deleting your store.")
+        self.assertTrue(Store.objects.filter(id=store.id).exists())
+
+    def test_store_delete_http_method_not_allowed(self):
+        _set_default_plan(premium_order_emails=False)
+        user = _make_user("delete-method@example.com")
+        store = _make_store("Delete Method Store", "delete-method.local", owner_email=user.email)
+        store.contact_email = user.email
+        store.save(update_fields=["contact_email"])
+        _auth_client(self.client, user.email, store_public_id=store.public_id)
+
+        resp = self.client.delete(f"/api/v1/store/{store.public_id}/", format="json")
+        self.assertEqual(resp.status_code, 405)
 
 
 class RemoveStoreEndpointTests(TestCase):
