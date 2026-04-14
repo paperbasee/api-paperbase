@@ -32,6 +32,13 @@ class Order(models.Model):
         CONFIRMED = 'confirmed', 'Confirmed'
         CANCELLED = 'cancelled', 'Cancelled'
 
+    class Flag(models.TextChoices):
+        NO_RESPONSE = "no_response", "No Response"
+        CALL_LATER = "call_later", "Call Later"
+        WRONG_NUMBER = "wrong_number", "Wrong Number"
+        BUSY = "busy", "Busy"
+        HIGH_PRIORITY = "high_priority", "High Priority"
+
     store = models.ForeignKey(
         Store,
         on_delete=models.CASCADE,
@@ -62,6 +69,14 @@ class Order(models.Model):
     email = models.EmailField(blank=True, default='')
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True
+    )
+    flag = models.CharField(
+        max_length=32,
+        choices=Flag.choices,
+        null=True,
+        blank=True,
+        default=None,
+        db_index=True,
     )
     total = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
     subtotal_before_discount = models.DecimalField(

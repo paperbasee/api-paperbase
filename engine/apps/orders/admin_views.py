@@ -45,6 +45,14 @@ ALLOWED_ORDER_STATUSES = {
     Order.Status.CANCELLED,
 }
 
+ALLOWED_ORDER_FLAGS = {
+    Order.Flag.NO_RESPONSE,
+    Order.Flag.CALL_LATER,
+    Order.Flag.WRONG_NUMBER,
+    Order.Flag.BUSY,
+    Order.Flag.HIGH_PRIORITY,
+}
+
 
 class AdminOrderViewSet(
     StoreRolePermissionMixin,
@@ -190,6 +198,10 @@ class AdminOrderViewSet(
         status_value = (self.request.query_params.get("status") or "").strip().lower()
         if status_value in ALLOWED_ORDER_STATUSES:
             qs = qs.filter(status=status_value)
+
+        flag_value = (self.request.query_params.get("flag") or "").strip().lower()
+        if flag_value in ALLOWED_ORDER_FLAGS:
+            qs = qs.filter(flag=flag_value)
 
         date_range = (self.request.query_params.get("date_range") or "").strip().lower()
         if date_range == "today":
