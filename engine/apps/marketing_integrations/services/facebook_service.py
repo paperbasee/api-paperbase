@@ -112,8 +112,8 @@ def track_purchase(request, order, event_id: str | None, integration) -> None:
     # Safety: only send Purchase on real conversion success (confirmed order).
     status_value = (getattr(order, "status", "") or "").strip().lower()
     if status_value != "confirmed":
-        logger.info(
-            "Skipping Purchase for order %s (status=%s).",
+        logger.warning(
+            "Skipping Meta Purchase for order %s (status=%s, expected confirmed).",
             getattr(order, "public_id", "—"),
             status_value or "—",
         )

@@ -16,6 +16,24 @@ from engine.core.tenant_guard import TenantViolationError
 
 logger = logging.getLogger(__name__)
 
+# Must match BooleanField defaults on IntegrationEventSettings — getattr(..., False) was wrong
+# for flags that default to True: a missing attribute would skip sending Purchase / InitiateCheckout.
+_EVENT_FLAG_DEFAULTS: dict[str, bool] = {
+    "track_purchase": True,
+    "track_initiate_checkout": True,
+    "track_view_content": False,
+    "track_search": False,
+}
+
+
+def _should_skip_event_for_settings(settings, event_flag: str) -> bool:
+    """Skip only when integration has settings and the flag is explicitly off."""
+    if not settings:
+        return False
+    default = _EVENT_FLAG_DEFAULTS.get(event_flag, True)
+    enabled = bool(getattr(settings, event_flag, default))
+    return not enabled
+
 
 def _resolve_store(*, store=None):
     """Return explicitly provided store or current request-scoped store."""
@@ -58,7 +76,7 @@ def _dispatch(request, event_flag: str, handler_name: str, *args: Any, store=Non
     for integration in integrations:
         try:
             settings = getattr(integration, "event_settings", None)
-            if settings and not getattr(settings, event_flag, False):
+            if _should_skip_event_for_settings(settings, event_flag):
                 continue
 
             module = provider_modules.get(integration.provider)
@@ -79,7 +97,11 @@ def _dispatch(request, event_flag: str, handler_name: str, *args: Any, store=Non
 
 
 def track_purchase(request, order, *, event_id: str | None = None) -> None:
-    _dispatch(request, "track_purchase", "track_purchase", order, event_id)
+    # Always pass the order's store: dashboard requests (esp. superusers) often have no
+    # tenant in ContextVar (middleware clears it for platform scope), while storefront
+    # InitiateCheckout still resolves via API key.
+    store = getattr(order, "store", None)
+    _dispatch(request, "track_purchase", "track_purchase", order, event_id, store=store)
 
 
 def track_initiate_checkout(request, *, event_id: str | None = None) -> None:
