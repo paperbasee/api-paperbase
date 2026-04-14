@@ -770,6 +770,12 @@ class StoreAPIKeyManagementViewSet(ProvenTenantContextMixin, viewsets.ViewSet):
             return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
         name = (request.data.get("name") or "").strip()
         key_type = (request.data.get("key_type") or StoreApiKey.KeyType.PUBLIC).strip().lower()
+        # Dashboard UX expects a single current key; creating a new key rotates the old one.
+        StoreApiKey.objects.filter(
+            store=store,
+            revoked_at__isnull=True,
+            is_active=True,
+        ).update(revoked_at=timezone.now(), is_active=False, updated_at=timezone.now())
         row, raw_api_key = create_store_api_key(store, name=name, key_type=key_type)
         return Response(
             {

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from django.db import transaction
 from django.utils import timezone
 
@@ -9,11 +11,14 @@ from engine.core.tenant_execution import system_scope
 from engine.apps.orders.order_summary_formatting import build_order_email_context
 
 from .constants import ORDER_CONFIRMED
+from .exceptions import SecurityError
 from .services import send_email
+
+logger = logging.getLogger(__name__)
 
 
 @app.task(name="engine.apps.emails.send_order_email")
-def send_order_email_task(order_public_id: str) -> None:
+def send_order_email_task(order_public_id: str, expected_store_public_id: str) -> None:
     """
     Send ORDER_CONFIRMED to the customer after courier dispatch (premium + store setting).
     Idempotent via customer_confirmation_sent_at and row lock.
@@ -32,6 +37,16 @@ def send_order_email_task(order_public_id: str) -> None:
             )
             if not order:
                 return
+            if order.store.public_id != expected_store_public_id:
+                logger.critical(
+                    "Tenant mismatch in send_order_email_task",
+                    extra={
+                        "order_public_id": order_public_id,
+                        "actual_store_public_id": order.store.public_id,
+                        "expected_store_public_id": expected_store_public_id,
+                    },
+                )
+                raise SecurityError("Tenant mismatch while sending order email")
             if order.customer_confirmation_sent_at is not None:
                 return
             if not should_send_customer_confirmation_order_email(order):
@@ -49,6 +64,7 @@ def send_order_email_task(order_public_id: str) -> None:
             consignment = (order.courier_consignment_id or "").strip()
             ctx = {
                 "store_name": store.name,
+                "store_public_id": store.public_id,
                 "order_number": order.order_number,
                 "customer_name": (order.shipping_name or "").strip(),
                 "total": str(order.total),

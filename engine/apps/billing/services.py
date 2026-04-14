@@ -197,7 +197,7 @@ def activate_subscription(
         duration_days: Number of days for the subscription
         source: 'payment', 'manual', or 'trial'
         amount: Payment amount (Decimal or int/float)
-        provider: Payment provider (e.g. 'manual', 'bkash', 'stripe')
+        provider: Payment provider (e.g. 'manual', 'bkash', 'nagad')
         change_reason: Optional note for SUBSCRIPTION_CHANGED (e.g. admin action label)
         existing_pending_payment: If set, this row is linked to the new subscription and
             marked SUCCESS instead of creating a second Payment (manual checkout approval).

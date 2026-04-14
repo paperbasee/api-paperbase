@@ -1,11 +1,14 @@
 from django.contrib import admin
 
+from engine.core.admin import StoreListFilter, StoreScopedAdminMixin
+
 from .models import Customer
 
 
 @admin.register(Customer)
-class CustomerAdmin(admin.ModelAdmin):
-    list_display = ["phone", "name", "email", "created_at"]
+class CustomerAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
+    list_display = ["store", "phone", "name", "email", "created_at"]
+    list_filter = (StoreListFilter,)
     fieldsets = (
         (
             None,
@@ -23,3 +26,6 @@ class CustomerAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store")

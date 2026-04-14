@@ -169,9 +169,6 @@ class Payment(models.Model):
         REFUNDED = "refunded", "Refunded"
 
     class Provider(models.TextChoices):
-        STRIPE = "stripe", "Stripe"
-        PADDLE = "paddle", "Paddle"
-        SSLCOMMERZ = "sslcommerz", "SSLCommerz"
         MANUAL = "manual", "Manual"
         BKASH = "bkash", "bKash"
         NAGAD = "nagad", "Nagad"

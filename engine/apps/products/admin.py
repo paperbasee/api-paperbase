@@ -3,6 +3,7 @@ from django.contrib import admin
 from django.utils.html import mark_safe
 
 from engine.apps.stores.models import Store
+from engine.core.admin import StoreListFilter, StoreScopedAdminMixin
 
 from .admin_forms import ProductAdminForm, build_product_extra_form_fields
 from .constants import MAX_PRODUCT_IMAGES_TOTAL
@@ -27,19 +28,20 @@ class ProductImageInline(admin.TabularInline):
 
 
 @admin.register(Product)
-class ProductAdmin(admin.ModelAdmin):
+class ProductAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
     form = ProductAdminForm
     list_display = [
-        'name',
-        'brand',
-        'get_category',
-        'price',
-        'stock',
-        'status',
-        'is_active',
+        "store",
+        "name",
+        "brand",
+        "get_category",
+        "price",
+        "stock",
+        "status",
+        "is_active",
     ]
-    list_editable = ['is_active']
-    list_filter = ['category', 'status', 'is_active']
+    list_editable = ["is_active"]
+    list_filter = [StoreListFilter, "category", "status", "is_active"]
     search_fields = ['name', 'brand', 'variants__sku']
     prepopulated_fields = {'slug': ('name',)}
     inlines = [ProductImageInline]
@@ -53,12 +55,13 @@ class ProductAdmin(admin.ModelAdmin):
                 return Store.objects.get(pk=request.POST["store"])
             except (Store.DoesNotExist, ValueError, TypeError):
                 return None
-        if request.method == "GET" and request.GET.get("store__id__exact"):
-            # Useful when coming from a filtered changelist.
-            try:
-                return Store.objects.get(pk=request.GET["store__id__exact"])
-            except (Store.DoesNotExist, ValueError, TypeError):
-                return None
+        if request.method == "GET":
+            raw = request.GET.get("store") or request.GET.get("store__id__exact")
+            if raw:
+                try:
+                    return Store.objects.get(pk=raw)
+                except (Store.DoesNotExist, ValueError, TypeError):
+                    return None
         return None
 
     def _extra_schema(self, request, obj=None) -> list[dict]:
@@ -173,11 +176,14 @@ class ProductAdmin(admin.ModelAdmin):
             use_distinct = False
         return queryset, use_distinct
 
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store", "category")
+
 
 @admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'parent', 'order', 'is_active', 'product_count']
-    list_filter = ['parent', 'is_active']
+class CategoryAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
+    list_display = ["store", "name", "slug", "parent", "order", "is_active", "product_count"]
+    list_filter = [StoreListFilter, "parent", "is_active"]
     list_editable = ['order', 'is_active']
     search_fields = ['name', 'slug']
     ordering = ['parent__name', 'order', 'name']
@@ -207,6 +213,9 @@ class CategoryAdmin(admin.ModelAdmin):
 
     product_count.short_description = 'Products'
 
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store", "parent")
+
 
 class ProductAttributeValueInline(admin.TabularInline):
     model = ProductAttributeValue
@@ -215,20 +224,27 @@ class ProductAttributeValueInline(admin.TabularInline):
 
 
 @admin.register(ProductAttribute)
-class ProductAttributeAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'order']
-    list_editable = ['order']
-    readonly_fields = ['public_id', 'slug']
+class ProductAttributeAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
+    list_display = ["store", "name", "slug", "order"]
+    list_editable = ["order"]
+    list_filter = (StoreListFilter,)
+    readonly_fields = ["public_id", "slug"]
     inlines = [ProductAttributeValueInline]
+
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store")
 
 
 @admin.register(ProductAttributeValue)
-class ProductAttributeValueAdmin(admin.ModelAdmin):
-    list_display = ['value', 'attribute', 'order']
-    list_filter = ['attribute']
-    list_editable = ['order']
-    ordering = ['attribute', 'order']
-    search_fields = ['value', 'attribute__name']
+class ProductAttributeValueAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
+    list_display = ["store", "value", "attribute", "order"]
+    list_filter = [StoreListFilter, "attribute"]
+    list_editable = ["order"]
+    ordering = ["attribute", "order"]
+    search_fields = ["value", "attribute__name"]
+
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store", "attribute")
 
 
 class ProductVariantAttributeInline(admin.TabularInline):
@@ -238,11 +254,14 @@ class ProductVariantAttributeInline(admin.TabularInline):
 
 
 @admin.register(ProductVariant)
-class ProductVariantAdmin(admin.ModelAdmin):
-    list_display = ['product', 'sku', 'price_override', 'is_active', 'created_at']
-    list_filter = ['is_active']
+class ProductVariantAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
+    list_display = ["store", "product", "sku", "price_override", "is_active", "created_at"]
+    list_filter = [StoreListFilter, "is_active"]
     list_editable = ['is_active']
     search_fields = ['sku', 'product__name']
     readonly_fields = ['sku']
     inlines = [ProductVariantAttributeInline]
-    autocomplete_fields = ['product']
+    autocomplete_fields = ["product"]
+
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store", "product")

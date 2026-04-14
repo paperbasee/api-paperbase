@@ -35,6 +35,14 @@ class EmailLog(PublicIdMixin, models.Model):
 
     PUBLIC_ID_KIND = "emaillog"
 
+    store = models.ForeignKey(
+        "stores.Store",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="email_logs",
+    )
+
     class Status(models.TextChoices):
         PENDING = "pending", "Pending"
         SENT = "sent", "Sent"

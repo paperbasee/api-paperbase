@@ -106,7 +106,7 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 | GET | `/api/v1/orders/<public_id>/` | staff/JWT | Order detail (store-scoped admin) |
 | **Payments** |
 | GET | `/api/v1/payments/methods/` | no | List payment methods |
-| POST | `/api/v1/payments/initiate/` | no | Placeholder – plug in Stripe/Razorpay etc. |
+| POST | `/api/v1/payments/initiate/` | no | Placeholder – plug in a payment gateway as needed |
 | **Shipping** |
 | GET | `/api/v1/shipping/options/?zone_public_id=…&order_total=…` | API key | Shipping options for a zone |
 | GET | `/api/v1/shipping/zones/` | API key | Zones with cost rules and metadata |

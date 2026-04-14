@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from django.conf import settings
 
 from engine.apps.billing.feature_gate import has_feature
 from engine.apps.billing.models import Subscription
-from engine.apps.stores.models import StoreSettings
+from engine.apps.stores.models import Store, StoreSettings
 from engine.apps.orders.order_summary_formatting import build_order_email_context
 from engine.apps.stores.services import (
     ORDER_EMAIL_NOTIFICATIONS_FEATURE,
@@ -27,6 +28,8 @@ from .constants import (
 from engine.utils.time import format_bd_date, format_bd_with_label
 
 from .tasks import send_email_task, send_order_email_task
+
+logger = logging.getLogger(__name__)
 
 
 def _store_internal_email(store) -> str | None:
@@ -56,6 +59,7 @@ def notify_store_new_order(order) -> None:
     owner_email = (store.owner_email or "").strip()
     ctx = {
         "store_name": store.name,
+        "store_public_id": store.public_id,
         "order_number": order.order_number,
         "customer_email": (order.email or "").strip(),
         "customer_name": (order.shipping_name or "").strip(),
@@ -90,7 +94,7 @@ def queue_customer_order_dispatched_email(order) -> bool:
     customer_email = (order.email or "").strip()
     if not customer_email:
         return False
-    send_order_email_task.delay(str(order.public_id))
+    send_order_email_task.delay(str(order.public_id), order.store.public_id)
     return True
 
 
@@ -257,13 +261,27 @@ def queue_two_fa_disabled_email(user) -> None:
 
 
 def queue_generic_notification(
-    to_email: str,
     *,
+    store: Store,
+    to_email: str,
     title: str,
     body: str,
     action_url: str | None = None,
 ) -> None:
-    ctx: dict = {"title": title, "body": body}
+    if not store or not getattr(store, "public_id", None):
+        raise ValueError("Valid store is required")
+    logger.info(
+        "Queued generic notification",
+        extra={
+            "store_public_id": store.public_id,
+            "to_email": to_email,
+        },
+    )
+    ctx: dict = {
+        "title": title,
+        "body": body,
+        "store_public_id": store.public_id,
+    }
     if action_url:
         ctx["action_url"] = action_url
     send_email_task.delay(

@@ -311,3 +311,30 @@ class JWTExemptRoutesTests(TestCase):
             HTTP_AUTHORIZATION=f"Bearer {new_key}",
         )
         self.assertEqual(new_key_response.status_code, 200)
+
+    def test_create_endpoint_revokes_previous_key(self):
+        _key_row, old_key = create_store_api_key(self.store, name="Initial")
+        make_product(self.store, name="Create Rotate Product")
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {self.access}")
+        create_response = self.client.post(
+            "/api/v1/settings/network/api-keys/",
+            {"name": "Rotated via create"},
+            format="json",
+        )
+        self.assertEqual(create_response.status_code, 201)
+        new_key = create_response.data["api_key"]
+        self.assertTrue(new_key.startswith("ak_pk_"))
+
+        self.client.force_authenticate(user=None)
+        old_key_response = self.client.get(
+            "/api/v1/products/",
+            HTTP_AUTHORIZATION=f"Bearer {old_key}",
+        )
+        self.assertEqual(old_key_response.status_code, 401)
+
+        new_key_response = self.client.get(
+            "/api/v1/products/",
+            HTTP_AUTHORIZATION=f"Bearer {new_key}",
+        )
+        self.assertEqual(new_key_response.status_code, 200)

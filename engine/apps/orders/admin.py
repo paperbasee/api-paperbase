@@ -9,6 +9,8 @@ from .stock import adjust_stock
 from engine.apps.orders.order_financials import money
 from engine.apps.orders.services import write_order_item_financials, recalculate_order_totals
 
+from engine.core.admin import StoreListFilter, StoreScopedAdminMixin
+
 from .models import Order, OrderItem, OrderAddress
 
 
@@ -42,12 +44,18 @@ class OrderItemInline(admin.TabularInline):
 
 
 @admin.register(Order)
-class OrderAdmin(admin.ModelAdmin):
+class OrderAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
     list_display = [
-        'product_names', 'shipping_name', 'phone', 'district',
-        'status', 'total', 'created_at',
+        "store",
+        "product_names",
+        "shipping_name",
+        "phone",
+        "district",
+        "status",
+        "total",
+        "created_at",
     ]
-    list_filter = ['status', 'created_at']
+    list_filter = [StoreListFilter, "status", "created_at"]
     inlines = [OrderItemInline, OrderAddressInline]
     readonly_fields = (
         "id",
@@ -91,6 +99,9 @@ class OrderAdmin(admin.ModelAdmin):
             },
         ),
     )
+
+    def optimize_store_queryset(self, qs):
+        return qs.select_related("store")
 
     def has_delete_permission(self, request, obj=None):
         return bool(getattr(request.user, "is_superuser", False))

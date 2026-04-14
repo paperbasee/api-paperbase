@@ -13,6 +13,7 @@ from engine.apps.billing.services import activate_subscription
 from engine.apps.stores.models import Store, StoreMembership, StoreSettings
 from engine.apps.stores.services import allocate_unique_store_code
 from engine.apps.emails.constants import (
+    GENERIC_NOTIFICATION,
     ORDER_RECEIVED,
     PLATFORM_NEW_SUBSCRIPTION,
     SUBSCRIPTION_ACTIVATED,
@@ -23,8 +24,10 @@ from engine.apps.emails.constants import (
 from engine.apps.emails.triggers import (
     notify_customer_order_confirmation_send_to_courier,
     notify_store_new_order,
+    queue_generic_notification,
     queue_two_fa_disabled_email,
 )
+from engine.apps.stores.models import Store
 from engine.apps.orders.models import Order
 from engine.apps.shipping.models import ShippingZone
 
@@ -157,7 +160,10 @@ class CustomerConfirmationSendToCourierTests(TestCase):
         order = _order(store)
         self.assertTrue(notify_customer_order_confirmation_send_to_courier(order))
         mock_delay.assert_called_once()
-        self.assertEqual(mock_delay.call_args[0][0], str(order.public_id))
+        self.assertEqual(
+            mock_delay.call_args[0],
+            (str(order.public_id), order.store.public_id),
+        )
         order.customer_confirmation_sent_at = timezone.now()
         order.save()
         mock_delay.reset_mock()
@@ -262,3 +268,33 @@ class TwoFactorDisableEmailTests(TestCase):
         mock_delay.assert_called_once()
         self.assertEqual(mock_delay.call_args[0][0], TWO_FA_DISABLE)
         self.assertEqual(mock_delay.call_args[0][1], "2fa@example.com")
+
+
+class QueueGenericNotificationTests(TestCase):
+    @patch("engine.apps.emails.tasks.send_email_task.delay")
+    def test_queues_with_store_public_id_in_context(self, mock_delay):
+        store = _store()
+        queue_generic_notification(
+            store=store,
+            to_email="u@example.com",
+            title="Hello",
+            body="World",
+            action_url="https://example.com/a",
+        )
+        mock_delay.assert_called_once()
+        self.assertEqual(mock_delay.call_args[0][0], GENERIC_NOTIFICATION)
+        self.assertEqual(mock_delay.call_args[0][1], "u@example.com")
+        ctx = mock_delay.call_args[0][2]
+        self.assertEqual(ctx["store_public_id"], store.public_id)
+        self.assertEqual(ctx["title"], "Hello")
+        self.assertEqual(ctx["body"], "World")
+        self.assertEqual(ctx["action_url"], "https://example.com/a")
+
+    def test_missing_store_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            queue_generic_notification(
+                store=Store(),
+                to_email="x@example.com",
+                title="t",
+                body="b",
+            )
