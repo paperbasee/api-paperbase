@@ -8,6 +8,11 @@ from config.health_views import HealthCheckView
 from engine.core.storefront_search_views import StorefrontSearchView
 
 
+admin.site.site_header = "Paperbase"
+admin.site.site_title = "Paperbase"
+admin.site.index_title = "Paperbase admin"
+
+
 def api_home(_request):
     return HttpResponse("home of paperbase API", content_type="text/plain")
 
