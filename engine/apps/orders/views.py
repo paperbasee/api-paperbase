@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser, IsStorefrontAPIKey
 
+from engine.apps.marketing_integrations.meta_event_ids import build_checkout_event_id
 from engine.apps.marketing_integrations.tracking import meta_conversions
 from engine.core.tenancy import get_active_store, require_api_key_store
 from engine.core.tenant_drf import ProvenTenantContextMixin
@@ -282,19 +283,12 @@ class OrderCreateView(CreateAPIView):
         append_ledger_lines_for_order(order=order)
 
         try:
-            purchase_event_id = f"purchase_{order.public_id}"
             order_for_meta = (
                 Order.objects.select_related("store")
                 .prefetch_related("items__product")
                 .get(pk=order.pk)
             )
-            logger.info(
-                "Meta CAPI Purchase (order placed): order=%s event_id=%s store=%s",
-                order_for_meta.public_id,
-                purchase_event_id,
-                getattr(order_for_meta.store, "public_id", "—"),
-            )
-            meta_conversions.track_purchase(request, order_for_meta, event_id=purchase_event_id)
+            meta_conversions.track_purchase(request, order_for_meta)
         except Exception:
             logger.exception(
                 "Meta Purchase tracking failed on storefront order create for %s",
@@ -358,6 +352,7 @@ class InitiateCheckoutView(APIView):
     allow_api_key = True
 
     def post(self, request):
-        event_id = (request.data.get("event_id") or "").strip() if isinstance(request.data, dict) else ""
-        meta_conversions.track_checkout_started(request, event_id=event_id or None)
-        return Response({'status': 'ok'})
+        eid = build_checkout_event_id(request)
+        if eid:
+            meta_conversions.track_checkout_started(request)
+        return Response({"status": "ok", "meta_event_id": eid})

@@ -10,11 +10,11 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-import uuid
 from typing import Any
 
 import requests
 
+from engine.apps.marketing_integrations.meta_event_ids import meta_event_id_valid
 from engine.core.encryption import decrypt_value
 
 logger = logging.getLogger(__name__)
@@ -61,9 +61,26 @@ def _send_event(
     event_data: dict[str, Any],
     user_data: dict[str, Any],
     *,
-    event_id: str | None = None,
+    event_id: str,
 ) -> None:
     """Post a single event to the Facebook Conversions API."""
+    if not event_id or not isinstance(event_id, str) or not event_id.strip():
+        logger.error(
+            "Meta CAPI skip: missing event_id for event_name=%s integration=%s",
+            event_name,
+            getattr(integration, "public_id", "—"),
+        )
+        return
+    eid = event_id.strip()
+    if not meta_event_id_valid(event_name, eid):
+        logger.error(
+            "Meta CAPI skip: invalid event_id format event_name=%s event_id=%r integration=%s",
+            event_name,
+            eid,
+            getattr(integration, "public_id", "—"),
+        )
+        return
+
     access_token = decrypt_value(integration.access_token_encrypted)
     if not access_token or not integration.pixel_id:
         logger.warning("Facebook integration %s missing credentials, skipping.", integration.public_id)
@@ -74,7 +91,7 @@ def _send_event(
     event_payload: dict[str, Any] = {
         "event_name": event_name,
         "event_time": int(time.time()),
-        "event_id": (event_id or uuid.uuid4().hex),
+        "event_id": eid,
         "action_source": "website",
         "user_data": user_data,
     }
@@ -93,12 +110,11 @@ def _send_event(
     try:
         resp = requests.post(url, json=body, timeout=10)
         resp.raise_for_status()
-        logger.info("Facebook event '%s' sent for pixel %s.", event_name, integration.pixel_id)
     except requests.RequestException:
         logger.exception("Failed to send Facebook event '%s' for pixel %s.", event_name, integration.pixel_id)
 
 
-def track_purchase(request, order, event_id: str | None, integration) -> None:
+def track_purchase(request, order, event_id: str, integration) -> None:
     user_data = _extract_user_data(request)
 
     email = getattr(order, "email", "") or ""
@@ -131,12 +147,12 @@ def track_purchase(request, order, event_id: str | None, integration) -> None:
     _send_event(integration, "Purchase", event_data, user_data, event_id=event_id)
 
 
-def track_initiate_checkout(request, event_id: str | None, integration) -> None:
+def track_initiate_checkout(request, event_id: str, integration) -> None:
     user_data = _extract_user_data(request)
     _send_event(integration, "InitiateCheckout", {}, user_data, event_id=event_id)
 
 
-def track_view_content(request, product, event_id: str | None, integration) -> None:
+def track_view_content(request, product, event_id: str, integration) -> None:
     user_data = _extract_user_data(request)
     event_data = {
         "currency": "BDT",
@@ -148,7 +164,7 @@ def track_view_content(request, product, event_id: str | None, integration) -> N
     _send_event(integration, "ViewContent", event_data, user_data, event_id=event_id)
 
 
-def track_search(request, query: str, event_id: str | None, integration) -> None:
+def track_search(request, query: str, event_id: str, integration) -> None:
     user_data = _extract_user_data(request)
     event_data = {"search_string": query}
     _send_event(integration, "Search", event_data, user_data, event_id=event_id)
