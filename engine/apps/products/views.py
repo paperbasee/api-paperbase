@@ -6,7 +6,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.permissions import IsStorefrontAPIKey
-from engine.apps.marketing_integrations.tracking import meta_conversions
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
 from .models import Product
@@ -74,12 +73,6 @@ class ProductDetailView(StorefrontTenantMixin, RetrieveAPIView):
         store = require_api_key_store(request)
         identifier = self.kwargs.get(self.lookup_url_kwarg)
         data = services.get_product_detail(store, identifier, request)
-        product_proxy = SimpleNamespace(
-            public_id=data.get("public_id"),
-            name=data.get("name"),
-            price=data.get("price"),
-        )
-        meta_conversions.track_product_detail_view(request, product_proxy)
         return Response(data)
 
 
@@ -206,7 +199,4 @@ class ProductSearchView(StorefrontTenantMixin, ListAPIView):
 
     def list(self, request, *args, **kwargs):
         response = super().list(request, *args, **kwargs)
-        query = request.query_params.get('q', '').strip()
-        if query and len(query) >= 2:
-            meta_conversions.track_search(request, query)
         return response

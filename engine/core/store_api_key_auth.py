@@ -47,7 +47,6 @@ STORE_FRONTEND_ROUTE_POLICY = (
     ("/api/v1/shipping/options/", {"GET"}),
     ("/api/v1/shipping/zones/", {"GET"}),
     ("/api/v1/shipping/preview/", {"POST"}),
-    ("/api/v1/orders/initiate-checkout/", {"POST"}),
     ("/api/v1/orders/", {"POST"}),
     ("/api/v1/support/tickets/", {"POST"}),
     ("/api/v1/pricing/", {"POST"}),

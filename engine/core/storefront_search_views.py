@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.permissions import IsStorefrontAPIKey
-from engine.apps.marketing_integrations.tracking import meta_conversions
 from engine.apps.products.models import Category, Product
 from engine.apps.products.serializers import (
     StorefrontCategorySerializer,
@@ -57,8 +56,6 @@ class StorefrontSearchView(APIView):
         if len(q) < 2:
             empty["trending"] = False
             return Response(empty)
-
-        meta_conversions.track_search(request, q)
 
         prod_qs = (
             annotate_storefront_product_stock(

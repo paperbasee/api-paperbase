@@ -13,8 +13,6 @@ from rest_framework.views import APIView
 
 from config.permissions import DenyAPIKeyAccess, IsAdminUser, IsStorefrontAPIKey
 
-from engine.apps.marketing_integrations.meta_event_ids import build_checkout_event_id
-from engine.apps.marketing_integrations.tracking import meta_conversions
 from engine.core.tenancy import get_active_store, require_api_key_store
 from engine.core.tenant_drf import ProvenTenantContextMixin
 
@@ -282,19 +280,6 @@ class OrderCreateView(CreateAPIView):
         )
         append_ledger_lines_for_order(order=order)
 
-        try:
-            order_for_meta = (
-                Order.objects.select_related("store")
-                .prefetch_related("items__product")
-                .get(pk=order.pk)
-            )
-            meta_conversions.track_purchase(request, order_for_meta)
-        except Exception:
-            logger.exception(
-                "Meta Purchase tracking failed on storefront order create for %s",
-                getattr(order, "public_id", order.pk),
-            )
-
         _notify_order_created(order)
 
         order_for_receipt = (
@@ -339,20 +324,3 @@ class OrderDetailView(ProvenTenantContextMixin, RetrieveAPIView):
         if not order:
             raise NotFound()
         return order
-
-
-class InitiateCheckoutView(APIView):
-    """
-    Signal the start of the checkout flow.
-    Called by the frontend when the user navigates to the checkout page.
-    Fires an InitiateCheckout event to Meta Conversions API and returns 200.
-    """
-    permission_classes = [IsStorefrontAPIKey]
-    authentication_classes = []
-    allow_api_key = True
-
-    def post(self, request):
-        eid = build_checkout_event_id(request)
-        if eid:
-            meta_conversions.track_checkout_started(request)
-        return Response({"status": "ok", "meta_event_id": eid})

@@ -47,6 +47,7 @@ api_v1_patterns = [
 urlpatterns = [
     path("", api_home),
     path("health", HealthCheckView.as_view()),
+    path("tracking/", include("engine.apps.tracking.urls")),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('api/v1/', include(api_v1_patterns)),
 ]

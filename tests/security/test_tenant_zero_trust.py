@@ -7,7 +7,6 @@ from engine.core.middleware.tenant_context_middleware import TenantContextMiddle
 from engine.core.tenant_context import _clear_tenant_context
 from engine.apps.stores.models import Store, StoreMembership
 from engine.apps.stores.services import allocate_unique_store_code
-from engine.apps.marketing_integrations.services import dispatcher
 from engine.core.authz import can_enable_internal_override
 from engine.core.migration_safety import TenantSafeMigration
 from engine.core.tenant_context import TenantContextMissingError
@@ -121,12 +120,12 @@ def test_auth_bypass_via_staff_without_auth_context_fails(settings):
 
 
 @pytest.mark.django_db
-def test_dispatcher_cannot_infer_tenant_from_objects(settings):
+def test_tenant_guard_violations_raise(settings):
     settings.TENANT_GUARD_STRICT_DEV = True
     store = _create_store()
-    with tenant_scope_from_store(store=store, reason="dispatcher_setup"):
+    with tenant_scope_from_store(store=store, reason="guard_setup"):
         category = Category.objects.create(store=store, name="Tops", slug="")
-        product = Product.objects.create(
+        Product.objects.create(
             store=store,
             name="Shirt",
             slug="shirt",
@@ -137,8 +136,8 @@ def test_dispatcher_cannot_infer_tenant_from_objects(settings):
 
     request = RequestFactory().get("/api/v1/products/")
     with pytest.raises(TenantViolationError):
-        dispatcher.track_view_content(request, product)
+        # Accessing store-scoped objects without a proven tenant context should fail.
+        Product.objects.filter(store_id=store.id).exists()
 
-    with system_scope(reason="dispatcher_system_scope_check"):
-        # Explicit system scope allows execution context, but no dispatch without integrations.
-        assert dispatcher._resolve_store(store=None) is None
+    with system_scope(reason="system_scope_check"):
+        assert Store.objects.filter(public_id=store.public_id).exists() is True

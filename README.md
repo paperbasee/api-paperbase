@@ -119,7 +119,6 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 | GET | `/api/v1/notifications/active/` | API key | Active storefront CTAs |
 | GET | `/api/v1/search/?q=…` | API key | Storefront search |
 | POST | `/api/v1/support/tickets/` | API key | Submit support ticket |
-| POST | `/api/v1/orders/initiate-checkout/` | API key | Checkout funnel signal (marketing / conversions tracking) |
 
 **Admin API** (staff only): `/api/v1/admin/` – stats, `basic-analytics/overview/` (home dashboard series), branding, CRUD including `support-tickets/`, products, orders, inventory, notifications, etc.
 

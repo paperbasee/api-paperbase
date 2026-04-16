@@ -4,7 +4,6 @@ __pycache__/
 *.sqlite3
 db_local.sqlite3
 media_local/
-static/
 *.log
 .env
 .env.local
