@@ -201,13 +201,13 @@ class TenantApiKeyMiddleware(MiddlewareMixin):
 
         path = request.path
         raw_api_key = _extract_bearer_token(request)
+        # Preserve presence of an API key token even on routes that do not require
+        # tenant API keys by path. `process_view` will enforce per-view allow_api_key.
+        request.raw_api_key_token = raw_api_key if _is_api_key_token(raw_api_key) else None
         if _is_admin_order_read_path(path, request.method) and not _is_api_key_token(raw_api_key):
             return None
 
         if not requires_tenant_api_key(path):
-            # Fail closed: API-key credentials are never valid on exempt/system routes.
-            if _is_api_key_token(raw_api_key):
-                return JsonResponse({"detail": "API key cannot access this endpoint."}, status=403)
             return None
 
         key_row = resolve_request_api_key(request)
@@ -229,10 +229,35 @@ class TenantApiKeyMiddleware(MiddlewareMixin):
 
     def process_view(self, request: HttpRequest, view_func, view_args, view_kwargs):
         maybe_validate_storefront_api_key_view_flags()
-        if not getattr(request, "api_key", None):
-            return None
         view_class = getattr(view_func, "view_class", None) or getattr(view_func, "cls", None)
         allow_api_key = bool(getattr(view_class, "allow_api_key", False))
+        raw_token = getattr(request, "raw_api_key_token", None)
+
+        # For routes that don't require tenant API key by path, allow API keys only
+        # when the view explicitly opts in via allow_api_key=True.
+        if raw_token and not requires_tenant_api_key(request.path):
+            if not allow_api_key:
+                return JsonResponse({"detail": "API key cannot access this endpoint."}, status=403)
+            # Resolve tenant for the opted-in view.
+            key_row = resolve_active_store_api_key(raw_token)
+            if key_row is None:
+                return JsonResponse({"detail": TENANT_API_KEY_REQUIRED_DETAIL}, status=401)
+            if key_row.key_type != key_row.KeyType.PUBLIC:
+                return JsonResponse(
+                    {"detail": "Secret API keys cannot access storefront endpoints."},
+                    status=403,
+                )
+            request.api_key = key_row
+            request.store = key_row.store
+            if not key_row.store.is_active:
+                return JsonResponse({"detail": "Store is not active."}, status=403)
+            touch_store_api_key_last_used(key_row)
+            return None
+
+        # For routes where tenant API keys are already required by path, we already
+        # resolved the tenant in process_request. Enforce per-view allowlist here.
+        if not getattr(request, "api_key", None):
+            return None
         if allow_api_key:
             return None
         return JsonResponse({"detail": "API key cannot access this endpoint."}, status=403)

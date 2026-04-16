@@ -87,6 +87,8 @@ class TrackingEventIngestView(APIView):
 
     authentication_classes: list = []
     permission_classes: list = []
+    # Allow publishable API keys on this non-/api/v1/ endpoint (enforced explicitly in-view).
+    allow_api_key = True
 
     def post(self, request):
         store_public_id_for_log = None
