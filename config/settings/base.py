@@ -140,6 +140,12 @@ CACHE_TTL_SHIPPING_OPTIONS = int(os.getenv("CACHE_TTL_SHIPPING_OPTIONS", "300"))
 CORS_ALLOW_HEADERS = list(__import__("corsheaders.defaults").defaults.default_headers) + [
     "x-store-public-id",
 ]
+# Without this, XHR/axios cannot read Content-Disposition on cross-origin responses, so
+# the dashboard cannot set a meaningful <a download> filename for blob exports.
+CORS_EXPOSE_HEADERS = [
+    "content-disposition",
+    "x-export-filename",
+]
 
 # Middleware
 MIDDLEWARE = [

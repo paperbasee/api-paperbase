@@ -177,4 +177,7 @@ class OrderExportDownloadView(ProvenTenantContextMixin, APIView):
             filename=download_name,
             content_type="text/csv; charset=utf-8",
         )
+        # Exposed via CORS (see CORS_EXPOSE_HEADERS): JS cannot read Content-Disposition
+        # on cross-origin blob downloads unless the header is allowlisted.
+        resp["X-Export-Filename"] = download_name
         return resp
