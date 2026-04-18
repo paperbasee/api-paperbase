@@ -145,37 +145,31 @@ SESSION_COOKIE_AGE = 60 * 60 * 8
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
 # ---------------------------------------------------------------------------
-# Logging (minimal, console-only)
+# Logging: no stdout/stderr (operational signals use DB e.g. StoreEventLog).
 # ---------------------------------------------------------------------------
 
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
-    "formatters": {
-        "default": {
-            "format": "%(asctime)s %(levelname)s %(name)s %(message)s",
-        },
-    },
     "handlers": {
-        "console": {
-            "class": "logging.StreamHandler",
-            "formatter": "default",
+        "null": {
+            "class": "logging.NullHandler",
         },
     },
     "loggers": {
         # Framework and server noise: warnings+ only.
-        "django": {"handlers": ["console"], "level": "WARNING", "propagate": False},
-        "django.request": {"handlers": ["console"], "level": "ERROR", "propagate": False},
-        "django.security": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "django": {"handlers": ["null"], "level": "WARNING", "propagate": False},
+        "django.request": {"handlers": ["null"], "level": "ERROR", "propagate": False},
+        "django.security": {"handlers": ["null"], "level": "WARNING", "propagate": False},
         # Gunicorn (starts before Django; only effective if using gunicorn.conf.py / matching flags).
-        "gunicorn.error": {"handlers": ["console"], "level": "WARNING", "propagate": False},
-        "gunicorn.access": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "gunicorn.error": {"handlers": ["null"], "level": "WARNING", "propagate": False},
+        "gunicorn.access": {"handlers": ["null"], "level": "WARNING", "propagate": False},
         # Per-request store resolution is DEBUG-only (see engine.core.tenancy.log_store_resolution).
-        "engine.core.tenancy": {"handlers": ["console"], "level": "WARNING", "propagate": False},
+        "engine.core.tenancy": {"handlers": ["null"], "level": "WARNING", "propagate": False},
         # Project code: info by default.
-        "engine": {"handlers": ["console"], "level": "INFO", "propagate": False},
-        "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "engine": {"handlers": ["null"], "level": "INFO", "propagate": False},
+        "config": {"handlers": ["null"], "level": "INFO", "propagate": False},
     },
-    "root": {"handlers": ["console"], "level": "WARNING"},
+    "root": {"handlers": ["null"], "level": "WARNING"},
 }
 

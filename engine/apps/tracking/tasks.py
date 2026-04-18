@@ -342,12 +342,12 @@ def send_capi_event(
 
 @app.task(name="engine.apps.tracking.cleanup_old_event_logs")
 def cleanup_old_event_logs() -> int:
-    """Celery beat: delete StoreEventLog rows older than 7 days (tracking app only)."""
+    """Celery beat: delete StoreEventLog rows older than 1 hour (app=tracking only)."""
     from datetime import timedelta
 
     from engine.apps.marketing_integrations.models import StoreEventLog
 
-    cutoff = timezone.now() - timedelta(days=7)
+    cutoff = timezone.now() - timedelta(hours=1)
     qs = StoreEventLog.objects.filter(created_at__lt=cutoff, app="tracking")
     deleted, _ = qs.delete()
     return int(deleted or 0)

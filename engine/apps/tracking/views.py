@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from django.core.cache import cache
 from rest_framework import status
+from rest_framework.parsers import JSONParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -87,8 +88,20 @@ class TrackingEventIngestView(APIView):
 
     authentication_classes: list = []
     permission_classes: list = []
+    parser_classes = [JSONParser]
     # Allow publishable API keys on this non-/api/v1/ endpoint (enforced explicitly in-view).
     allow_api_key = True
+
+    def dispatch(self, request, *args, **kwargs):
+        # Reject non-JSON before request.data touches form parsers (avoids TooManyFieldsSent).
+        if request.method == "POST":
+            ct = (request.META.get("CONTENT_TYPE") or "").split(";")[0].strip().lower()
+            if ct != "application/json":
+                return Response(
+                    {"detail": "Content-Type must be application/json."},
+                    status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                )
+        return super().dispatch(request, *args, **kwargs)
 
     def post(self, request):
         store_public_id_for_log = None

@@ -1,5 +1,5 @@
 """
-Gunicorn settings for quieter stdout (warning-level + no access log spam).
+Gunicorn settings: no access log stream; error log discarded (no Docker/host stdout).
 
 Use in production start command, e.g.:
   gunicorn -c gunicorn.conf.py config.wsgi:application
@@ -14,7 +14,7 @@ workers = int(os.environ.get("WEB_CONCURRENCY", "2"))
 threads = int(os.environ.get("GUNICORN_THREADS", "2"))
 timeout = int(os.environ.get("GUNICORN_TIMEOUT", "120"))
 
-# Hide boot/worker INFO lines and per-request access lines in the deploy log stream.
+# No per-request access lines; error stream discarded (not stderr).
 loglevel = "warning"
 accesslog = None
-errorlog = "-"
+errorlog = os.devnull
