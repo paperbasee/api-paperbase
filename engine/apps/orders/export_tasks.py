@@ -16,6 +16,7 @@ from django.db.models import Prefetch
 from django.utils import timezone
 
 from config.celery import app
+from engine.core.media_upload_paths import generate_order_export_file_path
 from engine.core.tenant_execution import system_scope
 
 from .export_csv_format import ORDER_CSV_HEADERS, format_order_for_csv
@@ -121,7 +122,10 @@ def run_order_export_csv_job(job_id: str) -> None:
             tmp.close()
             tmp = None
 
-            object_name = f"exports/{store_id}/{job_uuid}.csv"
+            export_date = timezone.now().date()
+            object_name = generate_order_export_file_path(
+                job.store.public_id, export_date, job_uuid
+            )
             with open(tmp_path, "rb") as fh:
                 default_storage.save(object_name, File(fh))
 

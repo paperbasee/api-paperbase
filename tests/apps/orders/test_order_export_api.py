@@ -75,7 +75,7 @@ class OrderExportApiTests(TestCase):
 
         with patch(
             "engine.apps.orders.export_tasks.default_storage.save",
-            return_value="exports/x/y.csv",
+            return_value="tenants/str_x/exports/order_str_x_2020-01-01__00000000-0000-0000-0000-000000000000.csv",
         ):
             run_order_export_csv_job(job_id)
 
@@ -122,7 +122,7 @@ class OrderExportApiTests(TestCase):
             status=OrderExportJob.Status.COMPLETED,
             select_all=True,
             filters={},
-            file_path="exports/1/test.csv",
+            file_path="tenants/str_x/exports/order_str_x_2020-01-01__00000000-0000-0000-0000-000000000000.csv",
             progress=100,
             expires_at=timezone.now() - timedelta(minutes=1),
         )
@@ -132,13 +132,14 @@ class OrderExportApiTests(TestCase):
 
     @patch("engine.apps.orders.export_cleanup.default_storage.delete")
     def test_cleanup_marks_expired(self, mock_delete):
+        legacy_path = "tenants/str_x/exports/order_str_x_2020-01-01__00000000-0000-0000-0000-000000000001.csv"
         job = OrderExportJob.objects.create(
             store=self.store_a,
             user=self.owner,
             status=OrderExportJob.Status.COMPLETED,
             select_all=True,
             filters={},
-            file_path="exports/1/old.csv",
+            file_path=legacy_path,
             progress=100,
             expires_at=timezone.now() - timedelta(hours=2),
         )
@@ -146,7 +147,7 @@ class OrderExportApiTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, OrderExportJob.Status.EXPIRED)
         self.assertEqual(job.file_path, "")
-        mock_delete.assert_called_once_with("exports/1/old.csv")
+        mock_delete.assert_called_once_with(legacy_path)
 
 
 @override_settings(CELERY_TASK_ALWAYS_EAGER=True)
@@ -190,6 +191,10 @@ class OrderExportTaskIntegrationTests(TestCase):
 
         job.refresh_from_db()
         self.assertEqual(job.status, OrderExportJob.Status.COMPLETED)
+        self.assertTrue(
+            (job.file_path or "").startswith(f"tenants/{self.store.public_id}/exports/"),
+            job.file_path,
+        )
         body = buf.getvalue()
         reader = csv.reader(StringIO(body))
         header = next(reader)

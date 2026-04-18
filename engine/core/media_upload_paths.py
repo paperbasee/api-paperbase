@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from pathlib import Path
 
 # Default when upload has no usable extension (ImageField uploads; stable path keys).
@@ -116,3 +117,16 @@ def tenant_support_attachment_upload_to(instance, filename: str) -> str:
     att_pub = _non_empty_public_id(getattr(instance, "public_id", None), label="attachment.public_id")
     ext = media_file_extension(filename)
     return f"tenants/{store_pub}/support/{ticket_pub}/{att_pub}.{ext}"
+
+
+def generate_order_export_file_path(
+    store_public_id: str, export_date: date, job_id: uuid.UUID
+) -> str:
+    """
+    Relative key under the default storage location (e.g. media/ in R2) for a store CSV export.
+
+    Includes job_id in the filename so same-day re-exports stay unique with S3 file_overwrite off.
+    """
+    store_pub = _non_empty_public_id(store_public_id, label="store.public_id")
+    date_str = export_date.isoformat()
+    return f"tenants/{store_pub}/exports/order_{store_pub}_{date_str}__{job_id}.csv"

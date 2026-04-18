@@ -31,6 +31,22 @@ def _download_path(job_id: uuid.UUID) -> str:
     return f"admin/orders/export/{job_id}/download/"
 
 
+def _order_export_download_filename(*, file_path: str, store_public_id: str, job: OrderExportJob) -> str:
+    """Attachment name without job id: order_{public_id}_{YYYY-MM-DD}.csv."""
+    base = (file_path or "").strip().rsplit("/", 1)[-1]
+    prefix = f"order_{store_public_id}_"
+    if base.startswith(prefix) and "__" in base and base.lower().endswith(".csv"):
+        try:
+            rest = base[len(prefix) :]
+            date_part, _sep, _rest = rest.partition("__")
+            if len(date_part) == 10 and date_part[4:5] == "-" and date_part[7:8] == "-":
+                return f"order_{store_public_id}_{date_part}.csv"
+        except (IndexError, ValueError):
+            pass
+    d = (job.updated_at or timezone.now()).date()
+    return f"order_{store_public_id}_{d.isoformat()}.csv"
+
+
 class OrderExportCreateView(ProvenTenantContextMixin, APIView):
     permission_classes = [IsAuthenticated, DenyAPIKeyAccess, IsStoreAdmin]
 
@@ -152,10 +168,13 @@ class OrderExportDownloadView(ProvenTenantContextMixin, APIView):
             return Response({"detail": "File missing."}, status=status.HTTP_410_GONE)
 
         fh = default_storage.open(job.file_path, "rb")
+        download_name = _order_export_download_filename(
+            file_path=job.file_path, store_public_id=ctx.store.public_id, job=job
+        )
         resp = FileResponse(
             fh,
             as_attachment=True,
-            filename=f"orders-{ctx.store.id}-{job.id}.csv",
+            filename=download_name,
             content_type="text/csv; charset=utf-8",
         )
         return resp
