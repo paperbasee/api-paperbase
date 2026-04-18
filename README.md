@@ -146,6 +146,24 @@ See `.env.example` for the full list. Production requires at least:
 - `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`
 - `REDIS_URL` (single Railway Redis URL for Channels, cache, Celery broker, and Celery results)
 
+### Celery Beat (Railway)
+
+Beat uses **django-celery-beat** with `DatabaseScheduler` (no `celerybeat-schedule` file on disk), so it runs on Railway’s ephemeral filesystem without `PermissionError`.
+
+After installing dependencies, apply migrations so Beat tables exist on the same database as the app:
+
+```bash
+DJANGO_SETTINGS_MODULE=config.settings.production python manage.py migrate
+```
+
+**Railway — separate Beat service:** set the same env vars as the worker (`DJANGO_SETTINGS_MODULE=config.settings.production`, `REDIS_URL`, database vars). Start command:
+
+```bash
+celery -A config beat -l info
+```
+
+Do not pass `--schedule` or a schedule file path. Periodic tasks from `CELERY_BEAT_SCHEDULE` sync into the database when Beat starts; you can also view or edit them under Django admin **Periodic tasks**.
+
 ## Auth
 
 - **JWT**: `POST /api/v1/auth/token/` with `username` and `password`. Use header: `Authorization: Bearer <access_token>`.
