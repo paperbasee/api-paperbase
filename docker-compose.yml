@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: paperbase
+      POSTGRES_PASSWORD: paperbase
+      POSTGRES_DB: paperbase
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperbase -d paperbase"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    # Host .env is injected here (Compose reads it at startup; not COPY’d into the image).
+    # Keys under `environment` below override .env when both are set (e.g. DATABASE_URL).
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.runtime
+      DEBUG: "true"
+      SECRET_KEY: dev-change-me-not-for-production-use-32b-minimum
+      DATABASE_URL: postgresql://paperbase:paperbase@db:5432/paperbase
+      REDIS_URL: redis://redis:6379/0
+      ALLOWED_HOSTS: localhost,127.0.0.1,[::1]
+      DJANGO_STORAGE_BACKEND: filesystem
+      PORT: "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:

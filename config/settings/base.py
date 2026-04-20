@@ -209,7 +209,8 @@ def _default_tracker_build_id() -> str:
 TRACKER_BUILD_ID = (
     os.getenv("TRACKER_BUILD_ID")
     or os.getenv("GIT_SHA")
-    or os.getenv("RAILWAY_GIT_COMMIT_SHA")
+    or os.getenv("GITHUB_SHA")
+    or os.getenv("CI_COMMIT_SHA")
     or os.getenv("COMMIT_SHA")
     or _default_tracker_build_id()
 ).strip()

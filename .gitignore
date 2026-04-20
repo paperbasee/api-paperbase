@@ -46,7 +46,6 @@ media_local/
 
 # Env
 .env
-.env.railway
 
 # Keep example env committed
 !.env.example

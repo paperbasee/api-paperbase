@@ -4,18 +4,39 @@ Reusable, API-first Django backend for e-commerce. Use it as a plug-and-play bac
 
 ## Quick start
 
+From the **repository root** (same folder as `manage.py` and this `README.md`):
+
 ```bash
-cd core
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env       # Edit .env (defaults to config.settings.development)
+cp .env.example .env       # Edit .env; defaults match config.settings.runtime (DEBUG=true, sqlite)
 python manage.py migrate
 python manage.py createsuperuser
 python manage.py runserver
 ```
 
+### Docker (same image as production)
+
+From the repository root:
+
+```bash
+docker compose up --build
+```
+
+Secrets and provider keys (e.g. `RESEND_API_KEY`) live in **`.env`** at the repository root: Compose passes them into the `web` container via `env_file` (the file is not baked into the image). Values under `environment` in `docker-compose.yml` still override `.env` for the keys listed there (such as `DATABASE_URL`).
+
+The **web** image uses [`entrypoint.sh`](entrypoint.sh): wait for Postgres (when `DATABASE_URL` is Postgres), then `migrate`, then `collectstatic`, then Gunicorn. The Dockerfile does not run migrations or collectstatic at build time.
+
+The stack runs Django (`DEBUG=true`), Postgres, and Redis with the same environment variable **names** you use in production; only values change per platform. The web process listens on `PORT` (set to `8000` in `docker-compose.yml`). Override any variable with a root `.env` file and `env_file` on the `web` service if you prefer not to inline defaults in Compose.
+
 API base: `http://127.0.0.1:8000/api/v1/`
+
+### CI (GitHub Actions)
+
+On push to **`master`** (and manual `workflow_dispatch`), [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) uses **Docker Buildx** and **`docker/build-push-action`** with **GHA layer cache** to build and push to **GHCR** (`ghcr.io/<owner>/<repo>:latest` and `:sha`, owner/repo lowercased for the registry). Configure repository secret **`GHCR_TOKEN`** (PAT with `write:packages` for `ghcr.io`). The workflow does **not** deploy anywhere, run migrations, or run `collectstatic` in CI—those run inside the container [`entrypoint.sh`](entrypoint.sh) at runtime.
+
+Deploy on your host or any provider that runs images from a registry (AWS, DigitalOcean, Render, etc.) by pulling the built image or rebuilding from this repo and setting the same environment variables; no vendor-specific CLI is required in this repository.
 
 ## Seed products
 
@@ -24,7 +45,7 @@ Two built-in product seed commands are available:
 - `seed_products`: clears existing products for the selected store and seeds a large demo catalog.
 - `seed_apparel_demo`: seeds demo apparel products with variants (shirt + pant).
 
-Run from `backend/`:
+From the repository root:
 
 ```bash
 source venv/bin/activate
@@ -134,29 +155,36 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 - **Shipping zones list:** each zone includes `zone_public_id`, `name`, `estimated_days`, `is_active`, `created_at`, `updated_at`, `cost_rules`.
 ## Environment variables
 
-Use explicit settings modules:
+Primary module (12-factor, Docker, local, production):
 
-- Development: `DJANGO_SETTINGS_MODULE=config.settings.development`
-- Production: `DJANGO_SETTINGS_MODULE=config.settings.production`
+- `DJANGO_SETTINGS_MODULE=config.settings.runtime`
 
-See `.env.example` for the full list. Production requires at least:
+Legacy shims (same behavior after env defaults):
+
+- `config.settings.development` — forces `DEBUG=true`, then loads `runtime`
+- `config.settings.production` — refuses `DEBUG=true`, forces `DEBUG=false`, then loads `runtime`
+
+See `.env.example` for the full list. With `DEBUG=false`, configure at least:
 
 - `SECRET_KEY`
-- `ALLOWED_HOSTS`
-- `DB_NAME`, `DB_USER`, `DB_PASSWORD`, `DB_HOST`, `DB_PORT`
-- `REDIS_URL` (single Railway Redis URL for Channels, cache, Celery broker, and Celery results)
+- `ALLOWED_HOSTS` (comma-separated)
+- `DATABASE_URL` (Postgres or SQLite URL; `dj-database-url` format)
+- `REDIS_URL` (Channels, Django cache, Celery broker/results)
+- `STORE_API_KEY_SECRET`, `CSRF_TRUSTED_ORIGINS`
 
-### Celery Beat (Railway)
+Static and media: by default `DJANGO_STORAGE_BACKEND=filesystem` (WhiteNoise expects collected static files). The **Dockerfile** does not run `collectstatic` at build time; the **entrypoint** runs `collectstatic` at container start so files go to **R2/S3** in production (`DJANGO_STORAGE_BACKEND=s3` and full `R2_*`, or all `R2_*` auto-selected per `config.settings.runtime`). If all `R2_*` variables are set, S3-compatible storage is selected automatically; set `DJANGO_STORAGE_BACKEND=filesystem` to force local static/media even when `R2_*` are present.
 
-Beat uses **django-celery-beat** with `DatabaseScheduler` (no `celerybeat-schedule` file on disk), so it runs on Railway’s ephemeral filesystem without `PermissionError`.
+### Celery Beat
+
+Beat uses **django-celery-beat** with `DatabaseScheduler` (no `celerybeat-schedule` file on disk), so it runs on ephemeral container filesystems without `PermissionError`.
 
 After installing dependencies, apply migrations so Beat tables exist on the same database as the app:
 
 ```bash
-DJANGO_SETTINGS_MODULE=config.settings.production python manage.py migrate
+DJANGO_SETTINGS_MODULE=config.settings.runtime python manage.py migrate
 ```
 
-**Railway — separate Beat service:** set the same env vars as the worker (`DJANGO_SETTINGS_MODULE=config.settings.production`, `REDIS_URL`, database vars). Start command:
+**Separate Beat service:** set the same env vars as the worker (`DJANGO_SETTINGS_MODULE=config.settings.runtime`, `REDIS_URL`, `DATABASE_URL`, etc.). Start command:
 
 ```bash
 celery -A config beat -l info
