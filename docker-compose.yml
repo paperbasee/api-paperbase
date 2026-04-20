@@ -25,6 +25,8 @@ services:
     build: .
     ports:
       - "8000:8000"
+    volumes:
+      - .:/app
     # Host .env is injected here (Compose reads it at startup; not COPY’d into the image).
     # Keys under `environment` below override .env when both are set (e.g. DATABASE_URL).
     env_file:
@@ -38,6 +40,7 @@ services:
       ALLOWED_HOSTS: localhost,127.0.0.1,[::1]
       DJANGO_STORAGE_BACKEND: filesystem
       PORT: "8000"
+    command: python manage.py runserver 0.0.0.0:8000
     depends_on:
       db:
         condition: service_healthy

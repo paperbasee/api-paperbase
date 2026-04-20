@@ -1,7 +1,10 @@
 from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
-from engine.core.admin_dashboard_cache import invalidate_dashboard_live_cache
+from engine.core.admin_dashboard_cache import (
+    bump_dashboard_stats_cache_version,
+    invalidate_dashboard_live_cache,
+)
 from engine.core.realtime import emit_store_events
 
 from .models import Product
@@ -16,8 +19,10 @@ def product_realtime_events(sender, instance, created, **kwargs):
         {"product_public_id": instance.public_id},
     )
     invalidate_dashboard_live_cache(instance.store.public_id)
+    bump_dashboard_stats_cache_version(instance.store.public_id)
 
 
 @receiver(post_delete, sender=Product)
 def product_delete_invalidate_dashboard(sender, instance, **kwargs):
     invalidate_dashboard_live_cache(instance.store.public_id)
+    bump_dashboard_stats_cache_version(instance.store.public_id)

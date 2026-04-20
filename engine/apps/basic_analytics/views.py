@@ -81,9 +81,10 @@ class BasicAnalyticsOverviewView(ProvenTenantContextMixin, APIView):
         bucket_norm = (bucket or "day").lower()
         period_expr = trunc_created_bd("created_at", bucket_norm)
 
-        # Business "orders" in this overview are confirmed (realized) only; keys unchanged.
+        # Dashboard "orders" represent orders received (placed) in the period.
+        # Exclude cancelled so "received" isn't inflated by voided orders.
         order_qs = filter_by_bd_date_range(
-            get_confirmed_orders_for_store(store),
+            Order.objects.filter(store_id=store.pk).exclude(status=Order.Status.CANCELLED),
             "created_at",
             start_date,
             end_date,
