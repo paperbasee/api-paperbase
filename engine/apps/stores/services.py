@@ -17,7 +17,7 @@ from engine.core import cache_service
 from engine.core.request_context import get_store_settings_request_cache
 
 from .models import Store, StoreApiKey, StoreMembership, StoreSettings
-from .store_lifecycle import touch_store_activity
+from .store_activity import touch_store_activity
 
 User = get_user_model()
 

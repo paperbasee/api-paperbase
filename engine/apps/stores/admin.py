@@ -1,10 +1,15 @@
 from django.contrib import admin
 from django.contrib import messages
 from django.core.exceptions import ValidationError
+from django.db.models.deletion import ProtectedError
 
 from engine.core.admin import StoreListFilter, StoreScopedAdminMixin
 
 from .models import Store, StoreMembership, StoreSettings
+
+
+def _store_delete_allowed(request) -> bool:
+    return bool(getattr(request.user, "is_superuser", False))
 
 
 @admin.register(Store)
@@ -53,12 +58,27 @@ class StoreAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
 
     @admin.action(description="Delete selected stores")
     def safe_delete_selected(self, request, queryset):
+        if not _store_delete_allowed(request):
+            messages.error(
+                request,
+                "Only superusers can delete stores.",
+            )
+            return
         ok = 0
         failed = 0
         for obj in queryset:
             try:
                 obj.delete()
                 ok += 1
+            except ProtectedError:
+                failed += 1
+                messages.error(
+                    request,
+                    (
+                        f"{obj}: Cannot delete this store because it still has related data. "
+                        "Delete the store's children first (e.g. products/categories/orders), then retry."
+                    ),
+                )
             except ValidationError as exc:
                 failed += 1
                 msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
@@ -69,10 +89,11 @@ class StoreAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
                 request,
                 f"Successfully deleted {ok} store{'s' if ok != 1 else ''}.",
             )
-        if failed and not ok:
+        # Avoid noisy duplicate messages when a single row already emitted a precise error.
+        if failed and not ok and failed > 1:
             messages.warning(
                 request,
-                f"No stores were deleted. {failed} failed validation.",
+                f"No stores were deleted. {failed} failed validation or dependency checks.",
             )
 
     def delete_model(self, request, obj):
@@ -80,8 +101,19 @@ class StoreAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
         Gracefully surface deletion validation errors in Django admin
         (e.g. missing contact_email), instead of throwing a 500.
         """
+        if not _store_delete_allowed(request):
+            messages.error(request, "Only superusers can delete stores.")
+            return
         try:
             super().delete_model(request, obj)
+        except ProtectedError:
+            messages.error(
+                request,
+                (
+                    "Cannot delete this store because it still has related data. "
+                    "Delete the store's children first (e.g. products/categories/orders), then retry."
+                ),
+            )
         except ValidationError as exc:
             msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
             messages.error(request, msg)
@@ -91,9 +123,20 @@ class StoreAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
         Bulk delete from changelist view can trigger model signals that raise
         ValidationError. Handle per-row so the admin UI doesn't crash.
         """
+        if not _store_delete_allowed(request):
+            messages.error(request, "Only superusers can delete stores.")
+            return
         for obj in queryset:
             try:
                 obj.delete()
+            except ProtectedError:
+                messages.error(
+                    request,
+                    (
+                        f"{obj}: Cannot delete this store because it still has related data. "
+                        "Delete the store's children first (e.g. products/categories/orders), then retry."
+                    ),
+                )
             except ValidationError as exc:
                 msg = exc.messages[0] if getattr(exc, "messages", None) else str(exc)
                 messages.error(request, f"{obj}: {msg}")

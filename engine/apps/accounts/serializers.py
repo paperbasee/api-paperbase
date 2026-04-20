@@ -113,7 +113,6 @@ class MeSerializer(SafeModelSerializer):
     avatar_url = serializers.SerializerMethodField()
     store = serializers.SerializerMethodField()
     active_store_public_id = serializers.SerializerMethodField()
-    has_recoverable_stores = serializers.SerializerMethodField()
     subscription = serializers.SerializerMethodField()
     latest_payment_status = serializers.SerializerMethodField()
 
@@ -133,7 +132,6 @@ class MeSerializer(SafeModelSerializer):
             "is_superuser",
             "date_joined",
             "active_store_public_id",
-            "has_recoverable_stores",
             "subscription",
             "latest_payment_status",
             "store",
@@ -154,14 +152,6 @@ class MeSerializer(SafeModelSerializer):
     def get_active_store_public_id(self, obj):
         # Server truth: first ACTIVE membership (avoids stale JWT pointing at suspended stores).
         return _first_active_store_public_id_for_user(obj)
-
-    def get_has_recoverable_stores(self, obj):
-        return Store.objects.filter(
-            memberships__user=obj,
-            memberships__role=StoreMembership.Role.OWNER,
-            memberships__is_active=True,
-            status__in=[Store.Status.INACTIVE, Store.Status.PENDING_DELETE],
-        ).exists()
 
     def get_subscription(self, obj):
         from engine.apps.billing.subscription_status import (
@@ -229,7 +219,7 @@ class MeSerializer(SafeModelSerializer):
 
     def get_store(self, obj):
         owned = getattr(obj, "owned_store", None)
-        if owned:
+        if owned and owned.status == Store.Status.ACTIVE:
             return {
                 "public_id": owned.public_id,
                 "name": owned.name,

@@ -4,7 +4,7 @@ from engine.core.serializers import SafeModelSerializer
 
 from engine.apps.billing.feature_gate import has_feature
 
-from .models import Store, StoreMembership, StoreRestoreChallenge, StoreSettings
+from .models import Store, StoreMembership, StoreSettings
 from .services import ORDER_EMAIL_NOTIFICATIONS_FEATURE
 
 User = get_user_model()
@@ -95,32 +95,6 @@ class StoreSerializer(SafeModelSerializer):
         ]
 
 
-class RecoverableStoreSerializer(SafeModelSerializer):
-    class Meta:
-        model = Store
-        fields = [
-            "public_id",
-            "name",
-            "status",
-            "delete_at",
-            "removed_at",
-            "delete_requested_at",
-        ]
-        read_only_fields = fields
-
-
-class RestoreSendSerializer(serializers.Serializer):
-    store_public_id = serializers.CharField(required=True)
-    purpose = serializers.ChoiceField(choices=StoreRestoreChallenge.Purpose.choices)
-
-
-class RestoreVerifySerializer(serializers.Serializer):
-    store_public_id = serializers.CharField(required=True)
-    challenge_public_id = serializers.CharField(required=True)
-    owner_code = serializers.CharField(required=False, allow_blank=True)
-    contact_code = serializers.CharField(required=False, allow_blank=True)
-
-
 class StoreMembershipSerializer(SafeModelSerializer):
     user_public_id = serializers.CharField(source="user.public_id", read_only=True)
     user_email = serializers.EmailField(source="user.email", read_only=True)
@@ -140,50 +114,3 @@ class StoreMembershipSerializer(SafeModelSerializer):
             "created_at",
         ]
         read_only_fields = ["public_id", "user_public_id", "created_at", "user_email", "store_name", "store_public_id"]
-
-
-class DeleteStoreOtpRequestSerializer(serializers.Serializer):
-    """Step 1: confirm text + identity before sending delete-schedule OTP."""
-
-    account_email = serializers.CharField(required=True, trim_whitespace=False)
-    store_name = serializers.CharField(required=True, trim_whitespace=False)
-    confirmation_phrase = serializers.CharField(required=True, trim_whitespace=False)
-
-    def validate(self, attrs):
-        account_email = attrs["account_email"]
-        store_name = attrs["store_name"]
-        if not account_email or not account_email.strip():
-            raise serializers.ValidationError({"account_email": "account_email is required."})
-        if not store_name or not store_name.strip():
-            raise serializers.ValidationError({"store_name": "store_name is required."})
-        if not attrs.get("confirmation_phrase"):
-            raise serializers.ValidationError({"confirmation_phrase": "confirmation_phrase is required."})
-        return attrs
-
-
-class DeleteStoreOtpVerifySerializer(serializers.Serializer):
-    """Step 2: OTP to finalize scheduling permanent deletion."""
-
-    challenge_public_id = serializers.CharField(required=True)
-    otp = serializers.CharField(required=True, min_length=6, max_length=6)
-
-    def validate_otp(self, value: str) -> str:
-        s = (value or "").strip()
-        if len(s) != 6 or not s.isdigit():
-            raise serializers.ValidationError("Enter the 6-digit code.")
-        return s
-
-
-class RemoveStoreRequestSerializer(serializers.Serializer):
-    """Remove (inactive) store: exact store name + confirmation phrase."""
-
-    store_name = serializers.CharField(required=True, trim_whitespace=False)
-    confirmation_phrase = serializers.CharField(required=True, trim_whitespace=False)
-
-    def validate(self, attrs):
-        if not attrs.get("store_name") or not attrs["store_name"].strip():
-            raise serializers.ValidationError({"store_name": "store_name is required."})
-        if not attrs.get("confirmation_phrase"):
-            raise serializers.ValidationError({"confirmation_phrase": "confirmation_phrase is required."})
-        return attrs
-

@@ -3,7 +3,7 @@ from __future__ import annotations
 from django.utils.deprecation import MiddlewareMixin
 
 from engine.apps.stores.models import Store
-from engine.apps.stores.store_lifecycle import touch_store_activity
+from engine.apps.stores.store_activity import touch_store_activity
 from engine.core.request_context import RequestContext, user_enters_platform_scope
 from engine.core.tenancy import get_active_store
 from engine.core.tenant_context import _clear_tenant_context, _set_tenant_context

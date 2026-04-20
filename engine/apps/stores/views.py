@@ -1,11 +1,9 @@
 from django.contrib.auth import get_user_model
-from django.db import transaction
-from django.core.exceptions import ValidationError
+from django.utils import timezone
 from rest_framework import viewsets, mixins, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from django.utils import timezone
 
 from config.permissions import (
     DenyAPIKeyAccess,
@@ -17,47 +15,16 @@ from config.permissions import (
 from engine.core.tenancy import get_active_store
 from engine.core.tenant_drf import ProvenTenantContextMixin
 
-from .audit import write_store_lifecycle_audit
-from .confirmation import confirm_delete_phrase, confirm_remove_phrase, confirm_store_name_against_store
-from .lifecycle_emails import (
-    queue_restore_otp_emails,
-    queue_store_delete_cancelled,
-    queue_store_delete_otp_email,
-    queue_store_restored_active,
-    queue_store_removed_inactive,
-    queue_delete_scheduled,
-)
 from .models import (
     Store,
     StoreApiKey,
-    StoreDeletionJob,
-    StoreDeletionOtpChallenge,
-    StoreLifecycleAuditLog,
     StoreMembership,
-    StoreRestoreChallenge,
     StoreSettings,
 )
 from .serializers import (
-    DeleteStoreOtpRequestSerializer,
-    DeleteStoreOtpVerifySerializer,
-    RecoverableStoreSerializer,
-    RemoveStoreRequestSerializer,
-    RestoreSendSerializer,
-    RestoreVerifySerializer,
     StoreSerializer,
     StoreMembershipSerializer,
     StoreSettingsSerializer,
-)
-from .store_lifecycle import (
-    DELETE_OTP_TTL_MINUTES,
-    create_deletion_schedule_otp_challenge,
-    create_restore_challenge,
-    is_restore_challenge_complete,
-    remove_store,
-    restore_store_after_otp,
-    schedule_permanent_delete,
-    verify_deletion_schedule_otp,
-    verify_restore_challenge_step,
 )
 from .services import (
     allocate_unique_store_code,
@@ -69,33 +36,8 @@ from .services import (
     revoke_store_api_key,
     set_cached_store_settings,
 )
-from .deletion_validation import (
-    STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE,
-    require_store_contact_email_for_deletion,
-)
 
 User = get_user_model()
-
-
-def _reissue_jwt_after_losing_active_store(request, excluded_store_id: int) -> dict:
-    """When the active store becomes non-ACTIVE, redirect to recover or onboarding."""
-    user = request.user
-    has_recoverable = Store.objects.filter(
-        memberships__user=user,
-        memberships__role=StoreMembership.Role.OWNER,
-        memberships__is_active=True,
-        status__in=[Store.Status.INACTIVE, Store.Status.PENDING_DELETE],
-    ).exists()
-    redirect_route = "/recover" if has_recoverable else "/onboarding"
-    next_store_public_id = None
-    refresh = RefreshToken.for_user(user)
-    access = refresh.access_token
-    return {
-        "access": str(access),
-        "refresh": str(refresh),
-        "redirect_route": redirect_route,
-        "next_store_public_id": next_store_public_id,
-    }
 
 
 def _reissue_jwt_active_store(request, store_public_id: str) -> dict:
@@ -121,17 +63,13 @@ class StoreViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
     serializer_class = StoreSerializer
     queryset = Store.objects.all()
     # Do NOT expose numeric PKs — use public_id in all URLs
-    lookup_field = 'public_id'
+    lookup_field = "public_id"
 
     def get_permissions(self):
         if self.action in {"list", "retrieve"}:
             return [DenyAPIKeyAccess(), IsDashboardUser()]
         if self.action == "create":
             return [DenyAPIKeyAccess(), IsVerifiedUser()]
-        if self.action in {"recoverable", "restore_send_codes", "restore_verify"}:
-            return [DenyAPIKeyAccess(), IsVerifiedUser()]
-        if self.action == "remove":
-            return [DenyAPIKeyAccess(), IsStoreAdmin()]
         return [DenyAPIKeyAccess(), IsStoreAdmin()]
 
     def get_queryset(self):
@@ -149,19 +87,16 @@ class StoreViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def destroy(self, request, *args, **kwargs):
-        """
-        Store deletion is only supported through the OTP-confirmed lifecycle flow
-        under /store/settings/delete/*.
-        """
-        return Response({"detail": "Method \"DELETE\" not allowed."}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        """Store deletion is not available via the dashboard API; use Django admin."""
+        return Response({"detail": 'Method "DELETE" not allowed.'}, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     def create(self, request, *args, **kwargs):
         if getattr(request.user, "owned_store", None) is not None:
             return Response(
                 {
                     "detail": (
-                        "You already have a store. Please restore or permanently delete it "
-                        "before creating a new one."
+                        "You already have a store. Contact support if you need help "
+                        "with an existing store."
                     )
                 },
                 status=status.HTTP_400_BAD_REQUEST,
@@ -247,146 +182,6 @@ class StoreViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
         tokens = _reissue_jwt_active_store(request, store.public_id)
         return Response({**payload, **tokens}, status=status.HTTP_201_CREATED)
 
-    def _owner_membership_for_public_id(self, request, store_public_id: str):
-        return (
-            StoreMembership.objects.filter(
-                user=request.user,
-                store__public_id=store_public_id,
-                role=StoreMembership.Role.OWNER,
-                is_active=True,
-            )
-            .select_related("store")
-            .first()
-        )
-
-    @action(detail=False, methods=["get"], url_path="recoverable")
-    def recoverable(self, request):
-        qs = (
-            Store.objects.filter(
-                memberships__user=request.user,
-                memberships__role=StoreMembership.Role.OWNER,
-                memberships__is_active=True,
-                status__in=[Store.Status.INACTIVE, Store.Status.PENDING_DELETE],
-            )
-            .distinct()
-            .order_by("-updated_at", "id")
-        )
-        return Response(RecoverableStoreSerializer(qs, many=True).data)
-
-    @action(detail=False, methods=["post"], url_path="remove")
-    def remove(self, request):
-        serializer = RemoveStoreRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ctx = get_active_store(request)
-        if not ctx.store or not ctx.membership:
-            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
-        if ctx.membership.role != StoreMembership.Role.OWNER:
-            return Response(
-                {"detail": "Only the store owner can remove the store."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-        d = serializer.validated_data
-        if not confirm_store_name_against_store(d["store_name"], ctx.store):
-            return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-        if not confirm_remove_phrase(d["confirmation_phrase"]):
-            return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-        with transaction.atomic():
-            store = Store.objects.select_for_update().get(pk=ctx.store.pk)
-            try:
-                remove_store(store=store, user=request.user)
-            except ValueError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-            write_store_lifecycle_audit(
-                user=request.user,
-                store=store,
-                action=StoreLifecycleAuditLog.Action.STORE_REMOVE,
-            )
-        store.refresh_from_db()
-        queue_store_removed_inactive(store)
-        tokens = _reissue_jwt_after_losing_active_store(request, store.id)
-        return Response(tokens)
-
-    @action(detail=False, methods=["post"], url_path="restore/send-codes")
-    def restore_send_codes(self, request):
-        ser = RestoreSendSerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        store_public_id = ser.validated_data["store_public_id"]
-        purpose = ser.validated_data["purpose"]
-        m = self._owner_membership_for_public_id(request, store_public_id)
-        if not m:
-            return Response({"detail": "Store not found."}, status=status.HTTP_404_NOT_FOUND)
-        store = m.store
-        client_key = str(request.user.pk) if request.user.is_authenticated else (
-            request.META.get("REMOTE_ADDR", "") or "unknown"
-        )
-        try:
-            challenge, owner_plain, contact_plain = create_restore_challenge(
-                store=store,
-                purpose=purpose,
-                client_key=client_key,
-                owner_email_fallback=request.user.email,
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        queue_restore_otp_emails(
-            store=store,
-            owner_plain=owner_plain or "",
-            contact_plain=contact_plain,
-            single_channel=challenge.single_channel,
-            owner_email_fallback=request.user.email,
-        )
-        return Response(
-            {
-                "challenge_public_id": challenge.public_id,
-                "single_channel": challenge.single_channel,
-                "expires_at": challenge.expires_at.isoformat(),
-            }
-        )
-
-    @action(detail=False, methods=["post"], url_path="restore/verify")
-    def restore_verify(self, request):
-        ser = RestoreVerifySerializer(data=request.data)
-        ser.is_valid(raise_exception=True)
-        d = ser.validated_data
-        m = self._owner_membership_for_public_id(request, d["store_public_id"])
-        if not m:
-            return Response({"detail": "Store not found."}, status=status.HTTP_404_NOT_FOUND)
-        store = m.store
-        challenge = StoreRestoreChallenge.objects.filter(
-            public_id=d["challenge_public_id"],
-            store=store,
-        ).first()
-        if not challenge:
-            return Response({"detail": "Invalid challenge."}, status=status.HTTP_400_BAD_REQUEST)
-        owner_code = (d.get("owner_code") or "").strip() or None
-        contact_code = (d.get("contact_code") or "").strip() or None
-        try:
-            verify_restore_challenge_step(
-                challenge=challenge,
-                owner_code=owner_code,
-                contact_code=contact_code,
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        challenge.refresh_from_db()
-        if not is_restore_challenge_complete(challenge):
-            return Response({"complete": False, "detail": "Additional verification required."})
-        prev_pending = store.status == Store.Status.PENDING_DELETE
-        restore_store_after_otp(store=store)
-        write_store_lifecycle_audit(
-            user=request.user,
-            store=store,
-            action=StoreLifecycleAuditLog.Action.STORE_RESTORE,
-            metadata={"previous_status": "pending_delete" if prev_pending else "inactive"},
-        )
-        if prev_pending:
-            queue_store_delete_cancelled(store)
-        else:
-            queue_store_restored_active(store)
-        StoreRestoreChallenge.objects.filter(pk=challenge.pk).delete()
-        tokens = _reissue_jwt_active_store(request, store.public_id)
-        return Response({**tokens, "complete": True})
-
 
 class StoreMembershipViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
     """
@@ -396,7 +191,7 @@ class StoreMembershipViewSet(ProvenTenantContextMixin, viewsets.ModelViewSet):
     permission_classes = [DenyAPIKeyAccess, IsStoreAdmin]
     serializer_class = StoreMembershipSerializer
     # Do NOT expose numeric PKs — use public_id in all URLs
-    lookup_field = 'public_id'
+    lookup_field = "public_id"
 
     def get_queryset(self):
         ctx = get_active_store(self.request)
@@ -433,10 +228,6 @@ class StoreSettingsViewSet(
     def get_permissions(self):
         if self.action == "api_key":
             return [DenyAPIKeyAccess(), IsStoreAdmin()]
-        if self.action == "delete_status":
-            return [DenyAPIKeyAccess(), IsVerifiedUser()]
-        if self.action in {"delete_store", "delete_send_otp", "delete_confirm"}:
-            return [DenyAPIKeyAccess(), IsStoreAdmin()]
         return [DenyAPIKeyAccess(), IsStoreStaff()]
 
     def get_object(self):
@@ -469,220 +260,6 @@ class StoreSettingsViewSet(
         if ctx.store:
             invalidate_store_settings_cache(ctx.store.public_id)
         return Response(serializer.data)
-
-    @action(detail=False, methods=["post"], url_path="delete")
-    def delete_store(self, request):
-        """Deprecated: use delete/send-otp and delete/confirm with email OTP."""
-        return Response(
-            {
-                "detail": (
-                    "Permanent deletion must be confirmed with an email OTP. "
-                    "Use delete/send-otp and delete/confirm."
-                ),
-                "code": "delete_requires_otp",
-            },
-            status=status.HTTP_410_GONE,
-        )
-
-    @action(detail=False, methods=["post"], url_path="delete/send-otp")
-    def delete_send_otp(self, request):
-        """Validate confirmation text; send 6-digit OTP to store owner email only."""
-        serializer = DeleteStoreOtpRequestSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        ctx = get_active_store(request)
-        store = ctx.store
-        membership = ctx.membership
-        if not store or not membership:
-            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
-        if membership.role != StoreMembership.Role.OWNER:
-            return Response(
-                {"detail": "Only the store owner can delete the store."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        account_email = serializer.validated_data["account_email"]
-        if request.user.email != account_email:
-            return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-        if not confirm_store_name_against_store(serializer.validated_data["store_name"], store):
-            return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-        if not confirm_delete_phrase(serializer.validated_data["confirmation_phrase"]):
-            return Response({"detail": "Invalid confirmation inputs."}, status=status.HTTP_403_FORBIDDEN)
-
-        if store.status == Store.Status.PENDING_DELETE:
-            return Response(
-                {"detail": "Permanent deletion is already scheduled for this store."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        try:
-            require_store_contact_email_for_deletion(store=store)
-        except ValidationError:
-            return Response(
-                {"detail": STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        client_key = str(request.user.pk) if request.user.is_authenticated else (
-            request.META.get("REMOTE_ADDR", "") or "unknown"
-        )
-        try:
-            challenge, plain = create_deletion_schedule_otp_challenge(
-                store=store,
-                user=request.user,
-                client_key=client_key,
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        queue_store_delete_otp_email(store=store, code=plain, owner_email_fallback=request.user.email)
-        write_store_lifecycle_audit(
-            user=request.user,
-            store=store,
-            action=StoreLifecycleAuditLog.Action.STORE_DELETE_OTP_SENT,
-        )
-        return Response(
-            {
-                "challenge_public_id": challenge.public_id,
-                "expires_at": challenge.expires_at.isoformat(),
-                "otp_ttl_minutes": DELETE_OTP_TTL_MINUTES,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=False, methods=["post"], url_path="delete/confirm")
-    def delete_confirm(self, request):
-        """Verify OTP, then schedule permanent deletion (same job + lifecycle as legacy flow)."""
-        serializer = DeleteStoreOtpVerifySerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        ctx = get_active_store(request)
-        if not ctx.store or not ctx.membership:
-            return Response({"detail": "No active store."}, status=status.HTTP_403_FORBIDDEN)
-        if ctx.membership.role != StoreMembership.Role.OWNER:
-            return Response(
-                {"detail": "Only the store owner can delete the store."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        challenge = StoreDeletionOtpChallenge.objects.filter(
-            public_id=serializer.validated_data["challenge_public_id"],
-            store=ctx.store,
-            user=request.user,
-        ).first()
-        if not challenge:
-            return Response({"detail": "Invalid or expired verification."}, status=status.HTTP_400_BAD_REQUEST)
-
-        try:
-            verify_deletion_schedule_otp(
-                challenge=challenge,
-                code=serializer.validated_data["otp"],
-            )
-        except ValueError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-        with transaction.atomic():
-            store = Store.objects.select_for_update().get(pk=ctx.store.pk)
-
-            try:
-                require_store_contact_email_for_deletion(store=store)
-            except ValidationError:
-                return Response(
-                    {"detail": STORE_EMAIL_REQUIRED_FOR_DELETION_MESSAGE},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            if store.status == Store.Status.PENDING_DELETE:
-                StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
-                return Response(
-                    {"detail": "Permanent deletion is already scheduled for this store."},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            existing_job = StoreDeletionJob.objects.filter(
-                store_id_snapshot=store.id,
-                status=StoreDeletionJob.Status.PENDING,
-            ).first()
-            if existing_job:
-                StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
-                tokens = _reissue_jwt_after_losing_active_store(request, store.id)
-                return Response(
-                    {
-                        "job_id": existing_job.public_id,
-                        "scheduled_delete_at": store.delete_at.isoformat() if store.delete_at else None,
-                        **tokens,
-                    },
-                    status=status.HTTP_200_OK,
-                )
-
-            try:
-                schedule_permanent_delete(store=store, user=request.user)
-            except ValueError as exc:
-                return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-
-            job = StoreDeletionJob.objects.create(
-                user=request.user,
-                store_public_id_snapshot=store.public_id,
-                store_id_snapshot=store.id,
-                delete_at_snapshot=store.delete_at,
-                lifecycle_version_snapshot=store.lifecycle_version,
-                status=StoreDeletionJob.Status.PENDING,
-                current_step="Scheduled — permanent deletion pending",
-                redirect_route="/onboarding",
-                next_store_public_id=None,
-            )
-
-            StoreDeletionOtpChallenge.objects.filter(pk=challenge.pk).delete()
-
-            write_store_lifecycle_audit(
-                user=request.user,
-                store=store,
-                action=StoreLifecycleAuditLog.Action.STORE_DELETE_SCHEDULED,
-            )
-
-        store.refresh_from_db()
-        queue_delete_scheduled(store, from_inactivity=False)
-        tokens = _reissue_jwt_after_losing_active_store(request, store.id)
-
-        return Response(
-            {
-                "job_id": job.public_id,
-                "scheduled_delete_at": store.delete_at.isoformat() if store.delete_at else None,
-                **tokens,
-            },
-            status=status.HTTP_200_OK,
-        )
-
-    @action(detail=False, methods=["get"], url_path="delete-status")
-    def delete_status(self, request):
-        """
-        Fetch deletion progress for a job id (user-scoped).
-        """
-
-        job_id = request.query_params.get("job_id")
-        if not job_id:
-            return Response({"detail": "job_id is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        job = StoreDeletionJob.objects.filter(public_id=job_id, user=request.user).first()
-        if not job:
-            return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
-
-        scheduled_delete_at = None
-        live = Store.objects.filter(id=job.store_id_snapshot).first()
-        if live and live.delete_at:
-            scheduled_delete_at = live.delete_at.isoformat()
-        elif job.delete_at_snapshot:
-            scheduled_delete_at = job.delete_at_snapshot.isoformat()
-
-        return Response(
-            {
-                "status": job.status,
-                "current_step": job.current_step,
-                "error_message": job.error_message or None,
-                "scheduled_delete_at": scheduled_delete_at,
-            },
-            status=status.HTTP_200_OK,
-        )
 
     @action(detail=False, methods=["get", "post"], url_path="api-key")
     def api_key(self, request):
@@ -828,4 +405,3 @@ class StoreAPIKeyManagementViewSet(ProvenTenantContextMixin, viewsets.ViewSet):
             return Response({"detail": "API key not found."}, status=status.HTTP_404_NOT_FOUND)
         revoke_store_api_key(row)
         return Response(status=status.HTTP_204_NO_CONTENT)
-
