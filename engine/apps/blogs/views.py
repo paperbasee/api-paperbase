@@ -28,15 +28,12 @@ class _BlogStorefrontBase(StorefrontTenantMixin, APIView):
 
 
 class PublicBlogListView(_BlogStorefrontBase):
-    """Published storefront blogs (optionally filtered by category / tag slug)."""
+    """Published storefront blogs (optionally filtered by tag slug)."""
 
     def get(self, request, *args, **kwargs):
         store = require_api_key_store(request)
-        category_slug = (request.query_params.get("category") or "").strip() or None
         tag_slug = (request.query_params.get("tag") or "").strip() or None
-        data = services.get_public_blogs(
-            store, request, category_slug=category_slug, tag_slug=tag_slug
-        )
+        data = services.get_public_blogs(store, request, tag_slug=tag_slug)
         return Response(data)
 
 

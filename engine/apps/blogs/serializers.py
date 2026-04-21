@@ -3,13 +3,7 @@ from rest_framework import serializers
 from engine.core.media_urls import absolute_media_url
 from engine.core.serializers import SafeModelSerializer
 
-from .models import Blog, BlogCategory, BlogTag
-
-
-class PublicBlogCategoryMiniSerializer(SafeModelSerializer):
-    class Meta:
-        model = BlogCategory
-        fields = ["public_id", "name", "slug"]
+from .models import Blog, BlogTag
 
 
 class PublicBlogTagMiniSerializer(SafeModelSerializer):
@@ -23,7 +17,6 @@ class PublicBlogListSerializer(SafeModelSerializer):
 
     featured_image_url = serializers.SerializerMethodField()
     published_at = serializers.SerializerMethodField()
-    category = PublicBlogCategoryMiniSerializer(read_only=True)
     tags = PublicBlogTagMiniSerializer(many=True, read_only=True)
 
     class Meta:
@@ -36,7 +29,6 @@ class PublicBlogListSerializer(SafeModelSerializer):
             "featured_image_url",
             "meta_title",
             "meta_description",
-            "category",
             "tags",
             "is_featured",
             "views",

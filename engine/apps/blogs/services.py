@@ -21,25 +21,23 @@ def _public_list_queryset(store) -> QuerySet[Blog]:
             published_at__isnull=False,
             published_at__lte=now,
         )
-        .select_related("category", "author")
+        .select_related("author")
         .prefetch_related("tags")
     )
 
 
-def get_public_blogs(store, request, *, category_slug: str | None = None, tag_slug: str | None = None):
+def get_public_blogs(store, request, *, tag_slug: str | None = None):
     """Cached list of published blogs for the storefront."""
     from .serializers import PublicBlogListSerializer
 
     cache_key = cache_service.build_key(
         store.public_id,
         "blogs",
-        f"list:{category_slug or 'all'}:{tag_slug or 'all'}",
+        f"list:{tag_slug or 'all'}",
     )
 
     def fetcher():
         qs = _public_list_queryset(store)
-        if category_slug:
-            qs = qs.filter(category__slug=category_slug)
         if tag_slug:
             qs = qs.filter(tags__slug=tag_slug).distinct()
         return PublicBlogListSerializer(qs, many=True, context={"request": request}).data

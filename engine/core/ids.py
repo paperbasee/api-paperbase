@@ -53,7 +53,6 @@ _PREFIXES: dict[str, str] = {
     "purchaseledger": "phl",
     "purchaseadjustment": "pad",
     "blog": "blg",
-    "blogcategory": "bcg",
     "blogtag": "btg",
 }
 

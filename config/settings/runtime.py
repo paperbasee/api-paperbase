@@ -7,11 +7,14 @@ Set DEBUG=true for local development; DEBUG=false for production-like runs.
 """
 from __future__ import annotations
 
+import logging
 from urllib.parse import urlparse
 
 import dj_database_url
 import sentry_sdk
 from django.core.exceptions import ImproperlyConfigured
+from sentry_sdk.integrations.django import DjangoIntegration
+from sentry_sdk.integrations.logging import LoggingIntegration
 
 from .base import *  # noqa: F403,F401
 
@@ -47,11 +50,6 @@ DEBUG = env_bool("DEBUG", False)  # noqa: F405
 IS_DEVELOPMENT = DEBUG
 
 SENTRY_DSN = os.getenv("SENTRY_DSN", "").strip()  # noqa: F405
-if SENTRY_DSN:
-    sentry_sdk.init(
-        dsn=SENTRY_DSN,
-        send_default_pii=True,
-    )
 
 if DEBUG:
     SECRET_KEY = os.getenv(  # noqa: F405
@@ -257,31 +255,136 @@ if not DEBUG:
     SESSION_COOKIE_AGE = 60 * 60 * 8
     SESSION_EXPIRE_AT_BROWSER_CLOSE = True
 
+    _log_handlers: dict = {
+        "null": {
+            "class": "logging.NullHandler",
+        },
+    }
+    _log_handler_names = ["null"]
+    if SENTRY_DSN:
+        _log_handlers["sentry_breadcrumb"] = {
+            "class": "sentry_sdk.integrations.logging.BreadcrumbHandler",
+            "level": "INFO",
+        }
+        _log_handlers["sentry_event"] = {
+            "class": "sentry_sdk.integrations.logging.EventHandler",
+            "level": "ERROR",
+        }
+        _log_handler_names = ["null", "sentry_breadcrumb", "sentry_event"]
+
+    _django_level = "INFO" if SENTRY_DSN else "WARNING"
+    _root_level = "INFO" if SENTRY_DSN else "WARNING"
+
     LOGGING = {
         "version": 1,
         "disable_existing_loggers": False,
-        "handlers": {
-            "null": {
-                "class": "logging.NullHandler",
+        "handlers": _log_handlers,
+        "loggers": {
+            "django": {
+                "handlers": list(_log_handler_names),
+                "level": _django_level,
+                "propagate": False,
+            },
+            "django.request": {
+                "handlers": list(_log_handler_names),
+                "level": "ERROR",
+                "propagate": False,
+            },
+            "django.security": {
+                "handlers": list(_log_handler_names),
+                "level": "WARNING",
+                "propagate": False,
+            },
+            "gunicorn.error": {
+                "handlers": list(_log_handler_names),
+                "level": "WARNING",
+                "propagate": False,
+            },
+            "gunicorn.access": {
+                "handlers": list(_log_handler_names),
+                "level": "WARNING",
+                "propagate": False,
+            },
+            "engine.core.tenancy": {
+                "handlers": list(_log_handler_names),
+                "level": "WARNING",
+                "propagate": False,
+            },
+            "engine": {
+                "handlers": list(_log_handler_names),
+                "level": "INFO",
+                "propagate": False,
+            },
+            "config": {
+                "handlers": list(_log_handler_names),
+                "level": "INFO",
+                "propagate": False,
             },
         },
-        "loggers": {
-            "django": {"handlers": ["null"], "level": "WARNING", "propagate": False},
-            "django.request": {"handlers": ["null"], "level": "ERROR", "propagate": False},
-            "django.security": {"handlers": ["null"], "level": "WARNING", "propagate": False},
-            "gunicorn.error": {"handlers": ["null"], "level": "WARNING", "propagate": False},
-            "gunicorn.access": {"handlers": ["null"], "level": "WARNING", "propagate": False},
-            "engine.core.tenancy": {"handlers": ["null"], "level": "WARNING", "propagate": False},
-            "engine": {"handlers": ["null"], "level": "INFO", "propagate": False},
-            "config": {"handlers": ["null"], "level": "INFO", "propagate": False},
-        },
-        "root": {"handlers": ["null"], "level": "WARNING"},
+        "root": {"handlers": list(_log_handler_names), "level": _root_level},
     }
 else:
     CSRF_COOKIE_SECURE = False
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_AGE = 60 * 60 * 8
     SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "class": "logging.StreamHandler",
+            },
+        },
+        "root": {
+            "handlers": ["console"],
+            "level": "INFO",
+        },
+        "loggers": {
+            "django": {
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "engine": {
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+            "config": {
+                "handlers": ["console"],
+                "level": "INFO",
+                "propagate": False,
+            },
+        },
+    }
+
+if SENTRY_DSN:
+    _sentry_env = "development" if IS_DEVELOPMENT else "production"
+    if DEBUG:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=_sentry_env,
+            send_default_pii=True,
+            integrations=[
+                DjangoIntegration(),
+                LoggingIntegration(
+                    level=logging.INFO,
+                    event_level=logging.ERROR,
+                ),
+            ],
+            traces_sample_rate=0.0,
+        )
+    else:
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            environment=_sentry_env,
+            send_default_pii=True,
+            integrations=[DjangoIntegration()],
+            disabled_integrations=[LoggingIntegration],
+            traces_sample_rate=0.0,
+        )
 
 if TESTING:  # noqa: F405
     EMAIL_BACKEND = "django.core.mail.backends.locmem.EmailBackend"

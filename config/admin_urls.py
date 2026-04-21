@@ -22,7 +22,6 @@ from engine.core.admin_trash_views import AdminTrashViewSet
 from engine.apps.inventory.admin_views import AdminInventoryViewSet, AdminStockMovementViewSet
 from engine.apps.banners.admin_views import AdminBannerViewSet
 from engine.apps.blogs.admin_views import (
-    AdminBlogCategoryViewSet,
     AdminBlogTagViewSet,
     AdminBlogViewSet,
 )
@@ -65,7 +64,6 @@ router.register(r'inventory', AdminInventoryViewSet, basename='admin-inventory')
 router.register(r'stock-movements', AdminStockMovementViewSet, basename='admin-stock-movements')
 router.register(r'banners', AdminBannerViewSet, basename='admin-banners')
 router.register(r'blogs', AdminBlogViewSet, basename='admin-blogs')
-router.register(r'blog-categories', AdminBlogCategoryViewSet, basename='admin-blog-categories')
 router.register(r'blog-tags', AdminBlogTagViewSet, basename='admin-blog-tags')
 router.register(r'customers', AdminCustomerViewSet, basename='admin-customers')
 router.register(r'shipping-zones', AdminShippingZoneViewSet, basename='admin-shipping-zones')

@@ -8,50 +8,6 @@ from engine.core.ids import generate_public_id
 from engine.core.media_upload_paths import tenant_blog_featured_image_upload_to
 
 
-class BlogCategory(models.Model):
-    """Store-scoped blog category."""
-
-    public_id = models.CharField(
-        max_length=32,
-        unique=True,
-        db_index=True,
-        editable=False,
-        help_text="Non-sequential public identifier (e.g. bcg_xxx).",
-    )
-    store = models.ForeignKey(
-        Store,
-        on_delete=models.CASCADE,
-        related_name="blog_categories",
-    )
-    name = models.CharField(max_length=100)
-    slug = models.SlugField(max_length=100, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["name"]
-        verbose_name_plural = "Blog categories"
-        constraints = [
-            models.UniqueConstraint(
-                fields=["store", "slug"],
-                name="uniq_blogcategory_store_slug",
-            ),
-        ]
-
-    def save(self, *args, **kwargs):
-        if not self.public_id:
-            self.public_id = generate_public_id("blogcategory")
-        base_slug = slugify((self.name or "").strip())[:100] or "category"
-        self.slug = _unique_slug(
-            BlogCategory, store_id=self.store_id, base_slug=base_slug, max_length=100, instance_pk=self.pk
-        )
-        self.full_clean()
-        super().save(*args, **kwargs)
-
-    def __str__(self) -> str:
-        return self.name
-
-
 class BlogTag(models.Model):
     """Store-scoped blog tag."""
 
@@ -131,13 +87,6 @@ class Blog(models.Model):
     meta_title = models.CharField(max_length=255, blank=True)
     meta_description = models.CharField(max_length=500, blank=True)
 
-    category = models.ForeignKey(
-        BlogCategory,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="blogs",
-    )
     tags = models.ManyToManyField(BlogTag, blank=True, related_name="blogs")
 
     published_at = models.DateTimeField(null=True, blank=True, db_index=True)

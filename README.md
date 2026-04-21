@@ -144,7 +144,7 @@ Storefront catalog, checkout, and public content endpoints require the **publish
 | GET | `/api/v1/blogs/` | API key | Published blog posts (tenant-scoped, feature-gated) |
 | GET | `/api/v1/blogs/<public_id>/` | API key | Blog post detail (increments `views`) |
 
-**Admin API** (staff only): `/api/v1/admin/` – stats, `basic-analytics/overview/` (home dashboard series), branding, CRUD including `support-tickets/`, products, orders, inventory, notifications, `blogs/`, `blog-categories/`, `blog-tags/`, etc.
+**Admin API** (staff only): `/api/v1/admin/` – stats, `basic-analytics/overview/` (home dashboard series), branding, CRUD including `support-tickets/`, products, orders, inventory, notifications, `blogs/`, `blog-tags/`, etc.
 
 ### Storefront JSON contract (breaking conventions)
 
@@ -199,8 +199,8 @@ Do not pass `--schedule` or a schedule file path. Periodic tasks from `CELERY_BE
 
 A tenant-scoped blogging module lives in `engine.apps.blogs`:
 
-- **Models:** `Blog`, `BlogCategory`, `BlogTag`. Every row carries an opaque
-  `public_id` (prefixes `blg_`, `bcg_`, `btg_`) plus a `store` FK; `(store, slug)`
+- **Models:** `Blog`, `BlogTag`. Every row carries an opaque
+  `public_id` (prefixes `blg_`, `btg_`) plus a `store` FK; `(store, slug)`
   is unique per model. `Blog` uses `published_at` (timestamp when the post is
   considered live), plus `is_featured`, `is_public`, `is_deleted` (soft-delete),
   and `views`. There is no `status` or `scheduled_at` column — visibility on the
@@ -219,10 +219,9 @@ A tenant-scoped blogging module lives in `engine.apps.blogs`:
 - **Dashboard endpoints:** `GET/POST/PATCH/DELETE /api/v1/admin/blogs/` for CRUD.
   On create and update, the API sets `published_at` to the current time when it
   is still null so new posts become visible without a separate publish step.
-  `/api/v1/admin/blog-categories/` and `/api/v1/admin/blog-tags/` provide the
-  supporting taxonomy. Destroys are soft (`is_deleted=True`, media scheduled
-  for deletion). List supports optional filters: `q` or `search` (title
-  contains), `category` (category `public_id`), `tag` (tag `public_id`),
+  `/api/v1/admin/blog-tags/` provides blog taxonomy. Destroys are soft
+  (`is_deleted=True`, media scheduled for deletion). List supports optional
+  filters: `q` or `search` (title contains), `tag` (tag `public_id`),
   `published_date` (`today` | `last_7_days` | `last_30_days`, same semantics
   as customer “joined date” filters on `published_at`).
 - **Feature toggle:** endpoints (both storefront and admin) require

@@ -14,14 +14,13 @@ from engine.core.tenancy import get_active_store
 
 from . import services
 from .admin_serializers import (
-    AdminBlogCategorySerializer,
     AdminBlogSerializer,
     AdminBlogTagSerializer,
 )
 from engine.utils.bd_query import filter_by_bd_date
 from engine.utils.time import bd_today
 
-from .models import Blog, BlogCategory, BlogTag
+from .models import Blog, BlogTag
 
 
 def _apply_module_gate(base_permissions):
@@ -47,17 +46,13 @@ class AdminBlogViewSet(_BlogModuleGateMixin, StoreRolePermissionMixin, viewsets.
     lookup_field = "public_id"
 
     def get_queryset(self):
-        qs = super().get_queryset().select_related("category", "author").prefetch_related("tags")
+        qs = super().get_queryset().select_related("author").prefetch_related("tags")
         ctx = get_active_store(self.request)
         if not ctx.store:
             return qs.none()
         qs = qs.filter(store=ctx.store, is_deleted=False)
 
         params = self.request.query_params
-
-        category = (params.get("category") or "").strip()
-        if category:
-            qs = qs.filter(category__public_id=category)
 
         tag = (params.get("tag") or "").strip()
         if tag:
@@ -136,63 +131,6 @@ class AdminBlogViewSet(_BlogModuleGateMixin, StoreRolePermissionMixin, viewsets.
             entity_type="blog",
             entity_id=public_id,
             summary=f"Blog deleted: {title}",
-        )
-
-
-class AdminBlogCategoryViewSet(
-    _BlogModuleGateMixin, StoreRolePermissionMixin, viewsets.ModelViewSet
-):
-    serializer_class = AdminBlogCategorySerializer
-    queryset = BlogCategory.objects.all()
-    lookup_field = "public_id"
-
-    def get_queryset(self):
-        qs = super().get_queryset()
-        ctx = get_active_store(self.request)
-        if not ctx.store:
-            return qs.none()
-        return qs.filter(store=ctx.store)
-
-    def perform_create(self, serializer):
-        ctx = get_active_store(self.request)
-        if not ctx.store:
-            raise ValidationError({"detail": "No active store resolved."})
-        instance = serializer.save(store=ctx.store)
-        services.invalidate_blog_cache(ctx.store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.CREATE,
-            entity_type="blog_category",
-            entity_id=instance.public_id,
-            summary=f"Blog category created: {instance.name}",
-        )
-
-    def perform_update(self, serializer):
-        instance = serializer.save()
-        ctx = get_active_store(self.request)
-        if ctx.store:
-            services.invalidate_blog_cache(ctx.store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.UPDATE,
-            entity_type="blog_category",
-            entity_id=instance.public_id,
-            summary=f"Blog category updated: {instance.name}",
-        )
-
-    def perform_destroy(self, instance):
-        name = instance.name
-        public_id = instance.public_id
-        ctx = get_active_store(self.request)
-        super().perform_destroy(instance)
-        if ctx.store:
-            services.invalidate_blog_cache(ctx.store.public_id)
-        log_activity(
-            request=self.request,
-            action=ActivityLog.Action.DELETE,
-            entity_type="blog_category",
-            entity_id=public_id,
-            summary=f"Blog category deleted: {name}",
         )
 
 

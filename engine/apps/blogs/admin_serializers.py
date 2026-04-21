@@ -4,7 +4,7 @@ from engine.core.media_deletion_service import schedule_media_deletion_from_keys
 from engine.core.media_urls import absolute_media_url
 from engine.core.serializers import SafeModelSerializer
 
-from .models import Blog, BlogCategory, BlogTag
+from .models import Blog, BlogTag
 
 
 def _truthy_flag(raw) -> bool:
@@ -13,24 +13,11 @@ def _truthy_flag(raw) -> bool:
     )
 
 
-class AdminBlogCategorySerializer(SafeModelSerializer):
-    class Meta:
-        model = BlogCategory
-        fields = ["public_id", "name", "slug", "created_at", "updated_at"]
-        read_only_fields = ["public_id", "slug", "created_at", "updated_at"]
-
-
 class AdminBlogTagSerializer(SafeModelSerializer):
     class Meta:
         model = BlogTag
         fields = ["public_id", "name", "slug", "created_at"]
         read_only_fields = ["public_id", "slug", "created_at"]
-
-
-class _BlogMiniCategorySerializer(SafeModelSerializer):
-    class Meta:
-        model = BlogCategory
-        fields = ["public_id", "name", "slug"]
 
 
 class _BlogMiniTagSerializer(SafeModelSerializer):
@@ -46,12 +33,8 @@ class AdminBlogSerializer(SafeModelSerializer):
     remove_featured_image = serializers.CharField(
         write_only=True, required=False, allow_blank=True
     )
-    category = _BlogMiniCategorySerializer(read_only=True)
     tags = _BlogMiniTagSerializer(many=True, read_only=True)
 
-    category_public_id = serializers.CharField(
-        write_only=True, required=False, allow_blank=True, allow_null=True
-    )
     tag_public_ids = serializers.ListField(
         child=serializers.CharField(allow_blank=True),
         write_only=True,
@@ -75,8 +58,6 @@ class AdminBlogSerializer(SafeModelSerializer):
             "featured_image_url",
             "meta_title",
             "meta_description",
-            "category",
-            "category_public_id",
             "tags",
             "tag_public_ids",
             "clear_tags",
@@ -110,17 +91,6 @@ class AdminBlogSerializer(SafeModelSerializer):
         full = f"{author.first_name or ''} {author.last_name or ''}".strip()
         return full or (getattr(author, "email", "") or "")
 
-    def validate_category_public_id(self, value: str | None):
-        if not value:
-            return None
-        store_id = (self.context or {}).get("store_id")
-        if store_id is None:
-            raise serializers.ValidationError("Store context missing.")
-        try:
-            return BlogCategory.objects.get(store_id=store_id, public_id=value)
-        except BlogCategory.DoesNotExist as exc:
-            raise serializers.ValidationError("Blog category not found.") from exc
-
     def validate_tag_public_ids(self, value):
         if value is None:
             return []
@@ -153,10 +123,9 @@ class AdminBlogSerializer(SafeModelSerializer):
         return attrs
 
     def _pop_relations(self, validated):
-        category = validated.pop("category_public_id", None)
         tags = validated.pop("tag_public_ids", None)
         clear_tags = _truthy_flag(validated.pop("clear_tags", None))
-        return category, tags, clear_tags
+        return tags, clear_tags
 
     def create(self, validated_data):
         remove_raw = validated_data.pop("remove_featured_image", None)
@@ -165,9 +134,7 @@ class AdminBlogSerializer(SafeModelSerializer):
         incoming_image = validated_data.get("featured_image") if image_provided else None
         if remove_flag and (not image_provided or incoming_image is None):
             validated_data["featured_image"] = None
-        category, tags, clear_tags = self._pop_relations(validated_data)
-        if category is not None:
-            validated_data["category"] = category
+        tags, clear_tags = self._pop_relations(validated_data)
         instance = super().create(validated_data)
         if clear_tags:
             instance.tags.clear()
@@ -194,9 +161,7 @@ class AdminBlogSerializer(SafeModelSerializer):
         elif image_provided and incoming_image is not None and old_key:
             schedule_media_deletion_from_keys([old_key])
 
-        category, tags, clear_tags = self._pop_relations(validated_data)
-        if "category_public_id" in self.initial_data:
-            instance.category = category  # None allowed (clear)
+        tags, clear_tags = self._pop_relations(validated_data)
         instance = super().update(instance, validated_data)
         if clear_tags:
             instance.tags.clear()

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from engine.core.admin import StoreListFilter, StoreScopedAdminMixin
 
-from .models import Blog, BlogCategory, BlogTag
+from .models import Blog, BlogTag
 
 
 @admin.register(Blog)
@@ -22,18 +22,7 @@ class BlogAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
     ordering = ("store", "-created_at")
 
     def optimize_store_queryset(self, qs):
-        return qs.select_related("store", "category", "author").prefetch_related("tags")
-
-
-@admin.register(BlogCategory)
-class BlogCategoryAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
-    list_display = ("public_id", "store", "name", "slug", "created_at")
-    list_filter = (StoreListFilter,)
-    search_fields = ("public_id", "name", "slug")
-    ordering = ("store", "name")
-
-    def optimize_store_queryset(self, qs):
-        return qs.select_related("store")
+        return qs.select_related("store", "author").prefetch_related("tags")
 
 
 @admin.register(BlogTag)
