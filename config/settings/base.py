@@ -297,9 +297,57 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_TASK_TIME_LIMIT = 600
+CELERY_TASK_SOFT_TIME_LIMIT = 540
+CELERY_TASK_IGNORE_RESULT = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 200
+CELERY_TASK_ANNOTATIONS = {
+    "engine.apps.orders.export_orders_csv": {
+        "soft_time_limit": 540,
+        "time_limit": 600,
+    },
+    "engine.apps.inventory.sync_product_stock_cache_for_store": {
+        "soft_time_limit": 510,
+        "time_limit": 600,
+    },
+    "engine.apps.inventory.schedule_product_stock_cache_all_stores": {
+        "soft_time_limit": 120,
+        "time_limit": 150,
+    },
+    "engine.core.delete_r2_objects": {
+        "soft_time_limit": 300,
+        "time_limit": 330,
+    },
+    "engine.apps.tracking.send_capi_event": {
+        "soft_time_limit": 25,
+        "time_limit": 35,
+    },
+    "engine.apps.emails.send_email": {
+        "soft_time_limit": 45,
+        "time_limit": 55,
+    },
+    "engine.apps.emails.send_order_email": {
+        "soft_time_limit": 45,
+        "time_limit": 55,
+    },
+    "engine.core.purge_expired_trash": {
+        "soft_time_limit": 480,
+        "time_limit": 540,
+    },
+    "engine.apps.tracking.cleanup_old_event_logs": {
+        "soft_time_limit": 120,
+        "time_limit": 150,
+    },
+    "engine.apps.orders.cleanup_expired_order_exports": {
+        "soft_time_limit": 300,
+        "time_limit": 330,
+    },
+}
+
 CELERY_BEAT_SCHEDULE = {
     "inventory-sync-product-stock-cache-hourly": {
-        "task": "engine.apps.inventory.sync_product_stock_cache_all_stores",
+        "task": "engine.apps.inventory.schedule_product_stock_cache_all_stores",
         "schedule": crontab(minute=0, hour="*"),
     },
     "trash-purge-expired-daily": {

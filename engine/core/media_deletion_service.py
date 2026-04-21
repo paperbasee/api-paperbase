@@ -8,6 +8,9 @@ from django.core.files.storage import default_storage
 
 logger = logging.getLogger(__name__)
 
+# Max keys per Celery message (broker payload / worker memory).
+_MEDIA_DELETE_CHUNK = 500
+
 
 def normalize_media_keys(keys: Iterable[str] | None) -> list[str]:
     cleaned: list[str] = []
@@ -61,6 +64,10 @@ def delete_media_files(keys: list[str]) -> int:
 
     from engine.core.tasks import delete_r2_objects
 
-    delete_r2_objects.delay(normalized)
-    logger.info("[PROD DELETE DISPATCHED] count=%s", len(normalized))
-    return len(normalized)
+    dispatched = 0
+    for i in range(0, len(normalized), _MEDIA_DELETE_CHUNK):
+        batch = normalized[i : i + _MEDIA_DELETE_CHUNK]
+        delete_r2_objects.delay(batch)
+        dispatched += len(batch)
+    logger.info("[PROD DELETE DISPATCHED] count=%s", dispatched)
+    return dispatched

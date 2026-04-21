@@ -26,12 +26,25 @@ from .models import Order, OrderAddress, OrderExportJob, OrderItem
 logger = logging.getLogger(__name__)
 
 
-def _chunks(ids: list[uuid.UUID], size: int) -> Iterable[list[uuid.UUID]]:
-    for i in range(0, len(ids), size):
-        yield ids[i : i + size]
+def _order_id_chunks(
+    base_qs, *, chunk_size: int = 500
+) -> Iterable[list[uuid.UUID]]:
+    """Stream primary keys from ``base_qs`` without materializing the full id list."""
+    buf: list[uuid.UUID] = []
+    for oid in base_qs.values_list("id", flat=True).iterator(chunk_size=chunk_size):
+        buf.append(oid)
+        if len(buf) >= chunk_size:
+            yield buf
+            buf = []
+    if buf:
+        yield buf
 
 
-@app.task(name="engine.apps.orders.export_orders_csv")
+@app.task(
+    name="engine.apps.orders.export_orders_csv",
+    soft_time_limit=540,
+    time_limit=600,
+)
 def export_orders_csv(job_id: str) -> None:
     run_order_export_csv_job(job_id)
 
@@ -76,7 +89,6 @@ def run_order_export_csv_job(job_id: str) -> None:
             ).order_by("-created_at", "id")
 
         total = base_qs.count()
-        id_list = list(base_qs.values_list("id", flat=True))
 
         tmp = None
         tmp_path = ""
@@ -106,7 +118,7 @@ def run_order_export_csv_job(job_id: str) -> None:
             if total == 0:
                 maybe_save_progress()
             else:
-                for chunk in _chunks(id_list, 500):
+                for chunk in _order_id_chunks(base_qs, chunk_size=500):
                     chunk_qs = (
                         Order.objects.filter(id__in=chunk, store_id=store_id)
                         .select_related("customer", "user")

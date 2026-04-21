@@ -50,7 +50,11 @@ def _key_for_bucket(raw_key: str) -> str:
     return f"{location}/{key}"
 
 
-@app.task(name="engine.core.purge_expired_trash")
+@app.task(
+    name="engine.core.purge_expired_trash",
+    soft_time_limit=480,
+    time_limit=540,
+)
 def purge_expired_trash_task() -> int:
     """Celery beat: permanently remove expired trash rows and orphan media."""
     return purge_expired_trash()
@@ -62,6 +66,8 @@ def purge_expired_trash_task() -> int:
     retry_backoff=True,
     retry_jitter=True,
     max_retries=5,
+    soft_time_limit=300,
+    time_limit=330,
     name="engine.core.delete_r2_objects",
 )
 def delete_r2_objects(self, keys: list[str]) -> int:

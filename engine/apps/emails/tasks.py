@@ -17,7 +17,11 @@ from .services import send_email
 logger = logging.getLogger(__name__)
 
 
-@app.task(name="engine.apps.emails.send_order_email")
+@app.task(
+    name="engine.apps.emails.send_order_email",
+    soft_time_limit=45,
+    time_limit=55,
+)
 def send_order_email_task(order_public_id: str, expected_store_public_id: str) -> None:
     """
     Send ORDER_CONFIRMED to the customer after courier dispatch (premium + store setting).
@@ -79,7 +83,11 @@ def send_order_email_task(order_public_id: str, expected_store_public_id: str) -
             order.save(update_fields=["customer_confirmation_sent_at"])
 
 
-@app.task(name="engine.apps.emails.send_email")
+@app.task(
+    name="engine.apps.emails.send_email",
+    soft_time_limit=45,
+    time_limit=55,
+)
 def send_email_task(
     email_type: str,
     to_email: str,

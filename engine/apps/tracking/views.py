@@ -281,8 +281,12 @@ class TrackingEventIngestView(APIView):
         try:
             touch_store_api_key_last_used(key_row)
         except Exception:
-            pass
+            logger.exception(
+                "tracking.touch_store_api_key_last_used_failed",
+                extra={"store_public_id": getattr(store, "public_id", None)},
+            )
 
+        from engine.apps.tracking.capi_payload import capi_enqueue_payload
         from engine.apps.tracking.tasks import send_capi_event
 
         try:
@@ -290,7 +294,7 @@ class TrackingEventIngestView(APIView):
                 store.public_id,
                 data["event_name"],
                 data["event_id"],
-                data,
+                capi_enqueue_payload(data, client_ip=ip),
             )
         except Exception:
             logger.exception(

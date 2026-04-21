@@ -30,6 +30,11 @@ def _try_db_log(*, store, status: str, event_name: str, message: str, metadata: 
             metadata=metadata or {},
         )
     except Exception:
+        logger.warning(
+            "tracking.store_event_log_failed",
+            exc_info=True,
+            extra={"event_name": event_name, "status": status},
+        )
         return
 
 
@@ -80,6 +85,8 @@ def _classify_meta_http_failure(resp: requests.Response) -> tuple[str, dict[str,
     retry_backoff_max=600,
     max_retries=3,
     acks_late=True,
+    soft_time_limit=25,
+    time_limit=35,
     name="engine.apps.tracking.send_capi_event",
 )
 def send_capi_event(
@@ -340,7 +347,11 @@ def send_capi_event(
     )
 
 
-@app.task(name="engine.apps.tracking.cleanup_old_event_logs")
+@app.task(
+    name="engine.apps.tracking.cleanup_old_event_logs",
+    soft_time_limit=120,
+    time_limit=150,
+)
 def cleanup_old_event_logs() -> int:
     """Celery beat: delete StoreEventLog rows older than 1 hour (app=tracking only)."""
     from datetime import timedelta

@@ -16,7 +16,11 @@ from .models import OrderExportJob
 logger = logging.getLogger(__name__)
 
 
-@app.task(name="engine.apps.orders.cleanup_expired_order_exports")
+@app.task(
+    name="engine.apps.orders.cleanup_expired_order_exports",
+    soft_time_limit=300,
+    time_limit=330,
+)
 def cleanup_expired_order_exports() -> int:
     """Delete storage objects for completed exports past ``expires_at``; mark jobs EXPIRED."""
     run_stale_processing_fail()
