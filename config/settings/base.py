@@ -315,10 +315,6 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 120,
         "time_limit": 150,
     },
-    "engine.apps.inventory.sync_product_stock_cache_all_stores": {
-        "soft_time_limit": 120,
-        "time_limit": 150,
-    },
     "engine.core.delete_r2_objects": {
         "soft_time_limit": 300,
         "time_limit": 330,
