@@ -222,7 +222,6 @@ def send_capi_event(
         "InitiateCheckout": "track_initiate_checkout",
         "AddToCart": "track_add_to_cart",
         "ViewContent": "track_view_content",
-        "Search": "track_search",
     }
     gate_field = _EVENT_GATE_MAP.get(event_name)
     if gate_field:
