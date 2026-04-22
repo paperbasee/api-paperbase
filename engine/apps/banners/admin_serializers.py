@@ -7,6 +7,7 @@ from .models import Banner
 class AdminBannerSerializer(SafeModelSerializer):
     cta_link = serializers.URLField(required=False, allow_blank=True)
     placement_slots = serializers.JSONField()
+    is_currently_active = serializers.ReadOnlyField()
 
     class Meta:
         model = Banner
@@ -17,6 +18,7 @@ class AdminBannerSerializer(SafeModelSerializer):
             "cta_text",
             "cta_link",
             "is_active",
+            "is_currently_active",
             "order",
             "placement_slots",
             "start_at",

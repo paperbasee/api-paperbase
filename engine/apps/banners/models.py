@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 from engine.apps.stores.models import Store
 from engine.core.ids import generate_public_id
@@ -67,3 +68,15 @@ class Banner(models.Model):
     def get_media_keys(self) -> list[str]:
         key = getattr(self.image, "name", "") if self.image else ""
         return [key] if key else []
+
+    @property
+    def is_currently_active(self) -> bool:
+        """True when enabled and within optional start_at / end_at window (matches storefront query)."""
+        if not self.is_active:
+            return False
+        now = timezone.now()
+        if self.start_at is not None and now < self.start_at:
+            return False
+        if self.end_at is not None and now > self.end_at:
+            return False
+        return True
