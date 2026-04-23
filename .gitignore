@@ -24,6 +24,8 @@ __pycache__/
 venv/
 .venv/
 env/
+.env
+.env.railway
 
 # Django
 *.log
@@ -43,9 +45,6 @@ media_local/
 .vscode/
 *.swp
 *.swo
-
-# Env
-.env
 
 # Keep example env committed
 !.env.example
