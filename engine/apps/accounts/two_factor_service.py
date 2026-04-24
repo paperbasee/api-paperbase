@@ -216,6 +216,26 @@ def verify_login_otp(user, code: str):
     return _verify_totp(profile, code, use_pending=False)
 
 
+def get_active_challenge(challenge_public_id: str, *, flow: str | None = None, for_update: bool = False):
+    try:
+        qs = UserTwoFactorChallenge.objects.select_related("user")
+        if for_update:
+            qs = qs.select_for_update()
+        challenge = qs.get(challenge_id=challenge_public_id)
+    except UserTwoFactorChallenge.DoesNotExist:
+        return None, "Invalid challenge."
+
+    if flow and challenge.flow != flow:
+        return None, "Invalid challenge."
+    if challenge.consumed_at:
+        return None, "Challenge already used."
+    if challenge.is_expired():
+        return None, "Challenge expired."
+    if challenge.is_locked():
+        return None, "Too many invalid attempts. Try again later."
+    return challenge, None
+
+
 @transaction.atomic
 def create_challenge(user, flow: str, payload: dict | None = None):
     challenge = UserTwoFactorChallenge.objects.create(
@@ -230,21 +250,9 @@ def create_challenge(user, flow: str, payload: dict | None = None):
 
 @transaction.atomic
 def verify_challenge(challenge_public_id: str, otp_code: str):
-    try:
-        challenge = (
-            UserTwoFactorChallenge.objects.select_for_update()
-            .select_related("user")
-            .get(challenge_id=challenge_public_id)
-        )
-    except UserTwoFactorChallenge.DoesNotExist:
-        return None, "Invalid challenge."
-
-    if challenge.consumed_at:
-        return None, "Challenge already used."
-    if challenge.is_expired():
-        return None, "Challenge expired."
-    if challenge.is_locked():
-        return None, "Too many invalid attempts. Try again later."
+    challenge, err = get_active_challenge(challenge_public_id, for_update=True)
+    if challenge is None:
+        return None, err
 
     ok, err = verify_login_otp(challenge.user, otp_code)
     if ok:

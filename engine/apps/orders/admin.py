@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Prefetch
 from django.utils.html import format_html
 
 from decimal import Decimal
@@ -101,7 +102,13 @@ class OrderAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
     )
 
     def optimize_store_queryset(self, qs):
-        return qs.select_related("store")
+        # Changelist calls product_names() per row; prefetch items once per page to avoid N+1.
+        return qs.select_related("store").prefetch_related(
+            Prefetch(
+                "items",
+                queryset=OrderItem.objects.only("id", "order_id", "product_name_snapshot"),
+            )
+        )
 
     def has_delete_permission(self, request, obj=None):
         return bool(getattr(request.user, "is_superuser", False))
@@ -202,10 +209,10 @@ class OrderAdmin(StoreScopedAdminMixin, admin.ModelAdmin):
 
     @admin.display(description='Products')
     def product_names(self, obj: Order):
-        names = [
-            oi.product.name if oi.product else "Unavailable"
-            for oi in obj.items.select_related('product').all()
-        ]
+        names = []
+        for oi in obj.items.all():
+            snap = (oi.product_name_snapshot or "").strip()
+            names.append(snap if snap else "Unavailable")
         if not names:
             return ''
         if len(names) <= 3:

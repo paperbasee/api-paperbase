@@ -413,6 +413,14 @@ class TwoFactorChallengeVerifySerializer(OTPCodeSerializer):
     challenge_public_id = serializers.CharField(required=True)
 
 
+class TwoFactorChallengeRecoveryRequestSerializer(serializers.Serializer):
+    challenge_public_id = serializers.CharField(required=True)
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        return (value or "").strip().lower()
+
+
 class TwoFactorRecoveryVerifySerializer(serializers.Serializer):
     code = serializers.CharField(required=True, max_length=64)
 
@@ -421,3 +429,7 @@ class TwoFactorRecoveryVerifySerializer(serializers.Serializer):
         if len(normalized) != 8 or not all(c in "0123456789ABCDEF" for c in normalized):
             raise serializers.ValidationError("Enter the 8-character recovery code.")
         return normalized
+
+
+class TwoFactorChallengeRecoveryVerifySerializer(TwoFactorRecoveryVerifySerializer):
+    challenge_public_id = serializers.CharField(required=True)

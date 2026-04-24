@@ -1,6 +1,8 @@
 from django.contrib.auth import authenticate
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.db import transaction
+from django.utils import timezone
 from rest_framework import permissions, views, status
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
@@ -23,6 +25,7 @@ from .two_factor_service import (
     create_challenge,
     get_or_create_profile,
     request_recovery_code,
+    get_active_challenge,
     verify_challenge,
     verify_recovery_and_disable_2fa,
     verify_setup_code,
@@ -39,6 +42,8 @@ from .serializers import (
     OTPCodeSerializer,
     TwoFactorChallengeVerifySerializer,
     TwoFactorDisableSerializer,
+    TwoFactorChallengeRecoveryRequestSerializer,
+    TwoFactorChallengeRecoveryVerifySerializer,
     TwoFactorRecoveryVerifySerializer,
 )
 from .services import (
@@ -410,6 +415,84 @@ class TwoFactorRecoveryVerifyView(views.APIView):
             {"is_enabled": False, "detail": "2FA has been disabled successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class TwoFactorChallengeRecoveryRequestView(views.APIView):
+    """POST /auth/2fa/challenge/recovery/request/ — email recovery code during login challenge."""
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [OTPChallengeRateThrottle]
+
+    def post(self, request):
+        serializer = TwoFactorChallengeRecoveryRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        challenge, err = get_active_challenge(
+            serializer.validated_data["challenge_public_id"],
+            flow="login",
+        )
+        if challenge is None:
+            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+
+        user = challenge.user
+        if not user.is_verified:
+            return _email_not_verified_response()
+
+        request_email = serializer.validated_data["email"]
+        if request_email != (user.email or "").strip().lower():
+            return Response(
+                {
+                    "detail": "No account found for this email in the current recovery flow.",
+                    "sent": False,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        try:
+            ok, err = request_recovery_code(user)
+        except RateLimitExceeded as exc:
+            return Response(exc.as_response_data(), status=status.HTTP_429_TOO_MANY_REQUESTS)
+        if not ok:
+            return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {"detail": "Recovery code sent to your email.", "sent": True},
+            status=status.HTTP_200_OK,
+        )
+
+
+class TwoFactorChallengeRecoveryVerifyView(views.APIView):
+    """POST /auth/2fa/challenge/recovery/verify/ — verify recovery code and complete login."""
+
+    permission_classes = [permissions.AllowAny]
+    throttle_classes = [OTPChallengeRateThrottle]
+
+    def post(self, request):
+        serializer = TwoFactorChallengeRecoveryVerifySerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        with transaction.atomic():
+            challenge, err = get_active_challenge(
+                serializer.validated_data["challenge_public_id"],
+                flow="login",
+                for_update=True,
+            )
+            if challenge is None:
+                return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+
+            user = challenge.user
+            if not user.is_verified:
+                return _email_not_verified_response()
+
+            ok, err = verify_recovery_and_disable_2fa(user, serializer.validated_data["code"])
+            if not ok:
+                return Response({"detail": err}, status=status.HTTP_400_BAD_REQUEST)
+
+            challenge.consumed_at = timezone.now()
+            challenge.save(update_fields=["consumed_at", "updated_at"])
+            queue_two_fa_disabled_email(user)
+            return Response(_issue_tokens(user), status=status.HTTP_200_OK)
 
 
 class TwoFactorChallengeVerifyView(views.APIView):
