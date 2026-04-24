@@ -1,6 +1,6 @@
 # Backup and Restore Runbook
 
-This runbook describes the production backup and restore flow for PostgreSQL using S3-compatible storage (Cloudflare R2).
+This runbook describes the production backup and restore flow for PostgreSQL using S3-compatible storage (Cloudflare R2) triggered by Celery Beat and executed by Celery Worker.
 
 ## Required Environment Variables
 
@@ -12,10 +12,13 @@ This runbook describes the production backup and restore flow for PostgreSQL usi
 - `BACKUP_S3_BUCKET`
 - `BACKUP_PREFIX_FULL` (default: `backups/full`)
 - `BACKUP_PREFIX_SNAPSHOT` (default: `backups/snapshot`)
-- `TZ` (optional cron timezone; defaults to UTC behavior when unset)
+- `TZ` (optional process timezone hint)
 
 Compatibility:
 - `BACKUP_PREFIX_WAL` is still accepted if `BACKUP_PREFIX_SNAPSHOT` is unset.
+
+Runtime requirement:
+- Celery worker must consume the `backup` queue in production.
 
 ## Storage Layout
 
@@ -35,15 +38,21 @@ Example `meta/latest.json`:
 
 ## Backup Flow
 
-1. Backup container cron triggers `backup-full.sh` and `backup-snapshot.sh`.
-2. Script creates one artifact:
+1. Celery Beat enqueues backup tasks on the dedicated `backup` queue.
+2. Celery Worker consumes `backup` queue and executes `backup/backup-full.sh` and `backup/backup-snapshot.sh`.
+3. Script creates one artifact:
    - full: `pg_dump "$DIRECT_DATABASE_URL" | gzip` -> `.sql.gz`
    - snapshot: `pg_dump -Fc "$DIRECT_DATABASE_URL"` -> `.dump`
-3. Artifact is uploaded to R2 in the standardized prefix path.
-4. After successful upload, script updates `meta/latest.json`.
-5. If `latest.json` update fails, backup still succeeds and only logs a warning.
+4. Artifact is uploaded to R2 in the standardized prefix path.
+5. After successful upload, script updates `meta/latest.json`.
+6. If `latest.json` update fails, backup still succeeds and only logs a warning.
 
 This makes backup data path authoritative while keeping pointer updates failure-safe.
+
+Default schedules:
+
+- full backup: daily `0 2 * * *` (`BACKUP_CRON_FULL`)
+- snapshot backup: every 10 minutes `*/10 * * * *` (`BACKUP_CRON_SNAPSHOT`)
 
 ## Restore Flow
 

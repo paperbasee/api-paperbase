@@ -193,6 +193,12 @@ DJANGO_SETTINGS_MODULE=config.settings.runtime python manage.py migrate
 celery -A config beat -l info
 ```
 
+**Worker queue note:** backup tasks are routed to a dedicated `backup` queue. Ensure the worker consumes it, for example:
+
+```bash
+celery -A config worker -l info -Q celery,backup
+```
+
 Do not pass `--schedule` or a schedule file path. Periodic tasks from `CELERY_BEAT_SCHEDULE` sync into the database when Beat starts; you can also view or edit them under Django admin **Periodic tasks**.
 
 ## Blog CMS

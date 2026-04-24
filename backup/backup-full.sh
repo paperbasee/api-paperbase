@@ -2,7 +2,11 @@
 set -euo pipefail
 
 # shellcheck source=/dev/null
-. /usr/local/lib/paperbase-backup/lib.sh
+if [[ -f "/usr/local/lib/paperbase-backup/lib.sh" ]]; then
+  . /usr/local/lib/paperbase-backup/lib.sh
+else
+  . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
+fi
 
 if [ -z "${DIRECT_DATABASE_URL:-}" ]; then
   echo "ERROR: DIRECT_DATABASE_URL is not set"

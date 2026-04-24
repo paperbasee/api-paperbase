@@ -29,6 +29,21 @@ def env_list(name: str, default: list[str] | None = None) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def env_crontab(name: str, default: str):
+    value = (os.getenv(name, default) or default).strip()
+    parts = value.split()
+    if len(parts) != 5:
+        parts = default.split()
+    minute, hour, day_of_month, month_of_year, day_of_week = parts
+    return crontab(
+        minute=minute,
+        hour=hour,
+        day_of_month=day_of_month,
+        month_of_year=month_of_year,
+        day_of_week=day_of_week,
+    )
+
+
 # Used to make test runs deterministic (e.g. avoid DRF throttling interfering with auth tests).
 TESTING = (
     any(arg == "test" or arg.startswith("test") for arg in sys.argv)
@@ -59,6 +74,7 @@ INSTALLED_APPS = [
     "engine.apps.notifications",
     "engine.apps.support.apps.SupportConfig",
     "engine.apps.accounts",
+    "engine.apps.backup.apps.BackupConfig",
     "engine.apps.customers.apps.CustomersConfig",
     "engine.apps.inventory",
     "engine.apps.shipping",
@@ -344,6 +360,19 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 300,
         "time_limit": 330,
     },
+    "engine.apps.backup.run_full_backup": {
+        "soft_time_limit": 7800,
+        "time_limit": 8400,
+    },
+    "engine.apps.backup.run_snapshot_backup": {
+        "soft_time_limit": 4200,
+        "time_limit": 4800,
+    },
+}
+
+CELERY_TASK_ROUTES = {
+    "engine.apps.backup.run_full_backup": {"queue": "backup"},
+    "engine.apps.backup.run_snapshot_backup": {"queue": "backup"},
 }
 
 CELERY_BEAT_SCHEDULE = {
@@ -363,6 +392,16 @@ CELERY_BEAT_SCHEDULE = {
     "order-export-cleanup-every-12-min": {
         "task": "engine.apps.orders.cleanup_expired_order_exports",
         "schedule": crontab(minute="*/12"),
+    },
+    "backup-full-daily": {
+        "task": "engine.apps.backup.run_full_backup",
+        "schedule": env_crontab("BACKUP_CRON_FULL", "0 2 * * *"),
+        "options": {"queue": "backup"},
+    },
+    "backup-snapshot-every-10-min": {
+        "task": "engine.apps.backup.run_snapshot_backup",
+        "schedule": env_crontab("BACKUP_CRON_SNAPSHOT", "*/10 * * * *"),
+        "options": {"queue": "backup"},
     },
 }
 

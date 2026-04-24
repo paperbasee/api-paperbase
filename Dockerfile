@@ -7,7 +7,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    awscli \
+    bash \
+    gzip \
     libpq5 \
+    postgresql-client \
+    util-linux \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /app/

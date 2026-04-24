@@ -52,21 +52,5 @@ services:
       redis:
         condition: service_healthy
 
-  # Optional: Postgres backups to R2 (cron inside container). Requires AWS_* + DATABASE_URL in .env.
-  # Run: docker compose --profile backup up -d backup
-  # One-shot (override entrypoint; default entrypoint starts crond only):
-  # docker compose --profile backup run --rm --entrypoint /usr/local/bin/backup-full.sh backup
-  backup:
-    profiles:
-      - backup
-    build:
-      context: .
-      dockerfile: backup/Dockerfile
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: ${DATABASE_URL:-postgresql://paperbase:paperbase@db:5432/paperbase}
-    restart: unless-stopped
-
 volumes:
   pgdata:
