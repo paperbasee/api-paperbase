@@ -425,25 +425,7 @@ CELERY_BEAT_SCHEDULE = {
         "task": "engine.apps.inventory.schedule_product_stock_cache_all_stores",
         "schedule": crontab(minute=0, hour="*"),
     },
-
-    # Trash — daily at 3:15am (unchanged)
-    "trash-purge-expired-daily": {
-        "task": "engine.core.purge_expired_trash",
-        "schedule": crontab(minute=15, hour=3),
-    },
-
-    # CHANGED: was every 15min → now daily at 3:30am
-    "tracking-cleanup-old-event-logs-daily": {
-        "task": "engine.apps.tracking.cleanup_old_event_logs",
-        "schedule": crontab(minute=30, hour=3),
-    },
-
-    # CHANGED: was every 12min → now every 2 hours
-    "order-export-cleanup-bi-hourly": {
-        "task": "engine.apps.orders.cleanup_expired_order_exports",
-        "schedule": crontab(minute=0, hour="*/2"),
-    },
-
+    
     # Backup — daily at 2am (unchanged)
     "backup-base-daily": {
         "task": "engine.apps.backup.run_base_backup",
@@ -451,10 +433,5 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"queue": "backup"},
     },
 
-    # Table prune — every 6 hours (unchanged)
-    "backup-table-prune-steady-state": {
-        "task": "engine.apps.backup.run_backup_table_prune",
-        "schedule": crontab(minute=30, hour="*/6"),
-    },
 }
 
