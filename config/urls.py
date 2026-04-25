@@ -54,20 +54,16 @@ urlpatterns = [
     path("tracking/", include("engine.apps.tracking.urls")),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('api/v1/', include(api_v1_patterns)),
-   path(
-    "api/inngest/",
-    include(
-        inngest.django.serve(
-            inngest_client,
-            [
-                inngest_functions.purge_expired_trash,
-                inngest_functions.cleanup_event_logs,
-                inngest_functions.cleanup_order_exports,
-                inngest_functions.backup_table_prune,
-            ],
-        )
-    ),
-),
 ]
+
+urlpatterns += inngest.django.serve(
+    inngest_client,
+    [
+        inngest_functions.purge_expired_trash,
+        inngest_functions.cleanup_event_logs,
+        inngest_functions.cleanup_order_exports,
+        inngest_functions.backup_table_prune,
+    ],
+)
 
 handler404 = "config.urls.not_found"
