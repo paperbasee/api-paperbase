@@ -382,10 +382,6 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 45,
         "time_limit": 55,
     },
-    "engine.core.purge_expired_trash": {
-        "soft_time_limit": 480,
-        "time_limit": 540,
-    },
     "engine.apps.tracking.cleanup_old_event_logs": {
         "soft_time_limit": 120,
         "time_limit": 150,
@@ -397,10 +393,6 @@ CELERY_TASK_ANNOTATIONS = {
     "engine.apps.backup.run_base_backup": {
         "soft_time_limit": 7800,
         "time_limit": 8400,
-    },
-    "engine.apps.backup.run_backup_table_prune": {
-        "soft_time_limit": 600,
-        "time_limit": 660,
     },
 }
 
