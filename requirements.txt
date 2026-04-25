@@ -26,3 +26,4 @@ whitenoise>=6.6,<7
 sentry-sdk[django]>=2.0,<3
 gevent>=23.9.1
 inngest>=0.5.0
+qstash

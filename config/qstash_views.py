@@ -1,18 +1,31 @@
-import hashlib
-import hmac
 import os
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
-
-QSTASH_CURRENT_SIGNING_KEY = os.getenv("QSTASH_CURRENT_SIGNING_KEY", "")
-QSTASH_NEXT_SIGNING_KEY = os.getenv("QSTASH_NEXT_SIGNING_KEY", "")
-
+from qstash import Receiver
 
 def _verify_qstash(request) -> bool:
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    return token in (QSTASH_CURRENT_SIGNING_KEY, QSTASH_NEXT_SIGNING_KEY)
+    signature = (request.headers.get("Upstash-Signature") or "").strip()
+    current_key = (os.getenv("QSTASH_CURRENT_SIGNING_KEY") or "").strip()
+    next_key = (os.getenv("QSTASH_NEXT_SIGNING_KEY") or "").strip()
+
+    if not signature or not current_key:
+        return False
+
+    receiver = Receiver(
+        current_signing_key=current_key,
+        next_signing_key=next_key,
+    )
+    try:
+        receiver.verify(
+            body=request.body.decode("utf-8") if request.body else "",
+            signature=signature,
+            url=request.build_absolute_uri(request.path),
+        )
+    except Exception:
+        return False
+    return True
 
 
 @csrf_exempt
