@@ -7,6 +7,8 @@ import inngest.django
 from config.inngest import inngest_client
 from config import inngest_functions
 
+from config.qstash_views import qstash_inventory_sync, qstash_base_backup
+
 from config.health_views import HealthCheckView
 from engine.core.storefront_search_views import StorefrontSearchView
 
@@ -54,6 +56,8 @@ urlpatterns = [
     path("tracking/", include("engine.apps.tracking.urls")),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('api/v1/', include(api_v1_patterns)),
+    path("webhooks/qstash/inventory-sync/", qstash_inventory_sync, name="qstash-inventory-sync"),
+    path("webhooks/qstash/base-backup/", qstash_base_backup, name="qstash-base-backup"),
 ]
 
 

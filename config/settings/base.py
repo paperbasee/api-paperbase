@@ -420,19 +420,5 @@ CELERY_TASK_ROUTES = {
     "engine.apps.backup.run_base_backup":       {"queue": "backup"},
 }
 
-CELERY_BEAT_SCHEDULE = {
-    # Inventory — hourly (unchanged)
-    "inventory-sync-product-stock-cache-hourly": {
-        "task": "engine.apps.inventory.schedule_product_stock_cache_all_stores",
-        "schedule": crontab(minute=0, hour="*"),
-    },
-    
-    # Backup — daily at 2am (unchanged)
-    "backup-base-daily": {
-        "task": "engine.apps.backup.run_base_backup",
-        "schedule": env_crontab("BACKUP_CRON_BASE", "0 2 * * *"),
-        "options": {"queue": "backup"},
-    },
-
-}
+CELERY_BEAT_SCHEDULE = {}
 
