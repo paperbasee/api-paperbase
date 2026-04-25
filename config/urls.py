@@ -66,6 +66,7 @@ urlpatterns += [
             inngest_functions.cleanup_order_exports,
             inngest_functions.backup_table_prune,
         ],
+        serve_path="api/inngest",
     )
 ]
 
