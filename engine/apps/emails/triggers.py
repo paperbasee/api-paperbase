@@ -305,34 +305,3 @@ def queue_two_fa_disabled_email(user) -> None:
             "disabled_at": format_bd_with_label(),
         },
     )
-
-
-def queue_generic_notification(
-    *,
-    store: Store,
-    to_email: str,
-    title: str,
-    body: str,
-    action_url: str | None = None,
-) -> None:
-    if not store or not getattr(store, "public_id", None):
-        raise ValueError("Valid store is required")
-    logger.info(
-        "Queued generic notification",
-        extra={
-            "store_public_id": store.public_id,
-            "to_email": to_email,
-        },
-    )
-    ctx: dict = {
-        "title": title,
-        "body": body,
-        "store_public_id": store.public_id,
-    }
-    if action_url:
-        ctx["action_url"] = action_url
-    send_email_task.delay(
-        GENERIC_NOTIFICATION,
-        to_email,
-        ctx,
-    )

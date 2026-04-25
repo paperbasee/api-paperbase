@@ -339,6 +339,14 @@ CELERY_TASK_IGNORE_RESULT = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 200
 CELERY_TASK_ANNOTATIONS = {
+    "engine.apps.backup.run_backup_table_prune": {
+        "soft_time_limit": 600,
+        "time_limit": 660,
+    },
+    "engine.core.purge_expired_trash": {
+        "soft_time_limit": 480,
+        "time_limit": 540,
+    },
     "engine.apps.orders.export_orders_csv": {
         "soft_time_limit": 540,
         "time_limit": 600,
@@ -390,33 +398,54 @@ CELERY_TASK_ANNOTATIONS = {
 }
 
 CELERY_TASK_ROUTES = {
-    "engine.apps.backup.run_base_backup": {"queue": "backup"},
+    # CRITICAL queue — user is waiting for these
+    "engine.apps.emails.send_email":            {"queue": "critical"},
+    "engine.apps.emails.send_order_email":      {"queue": "critical"},
+    "engine.apps.tracking.send_capi_event":     {"queue": "critical"},
+    "engine.apps.orders.export_orders_csv":     {"queue": "critical"},
+
+    # DEFAULT queue — important but nobody watching
+    "engine.core.delete_r2_objects":            {"queue": "default"},
+    "engine.apps.inventory.sync_product_stock_cache_for_store":      {"queue": "default"},
+    "engine.apps.inventory.schedule_product_stock_cache_all_stores": {"queue": "default"},
+
+    # BACKUP queue — already correct, keep it
+    "engine.apps.backup.run_base_backup":       {"queue": "backup"},
 }
 
 CELERY_BEAT_SCHEDULE = {
+    # Inventory — hourly (unchanged)
     "inventory-sync-product-stock-cache-hourly": {
         "task": "engine.apps.inventory.schedule_product_stock_cache_all_stores",
         "schedule": crontab(minute=0, hour="*"),
     },
+
+    # Trash — daily at 3:15am (unchanged)
     "trash-purge-expired-daily": {
         "task": "engine.core.purge_expired_trash",
         "schedule": crontab(minute=15, hour=3),
     },
-    # StoreEventLog (tracking app=tracking): retention EVENT_LOG_RETENTION_HOURS (default 72).
-    "tracking-cleanup-old-event-logs-frequent": {
+
+    # CHANGED: was every 15min → now daily at 3:30am
+    "tracking-cleanup-old-event-logs-daily": {
         "task": "engine.apps.tracking.cleanup_old_event_logs",
-        "schedule": crontab(minute="*/15"),
+        "schedule": crontab(minute=30, hour=3),
     },
-    "order-export-cleanup-every-12-min": {
+
+    # CHANGED: was every 12min → now every 2 hours
+    "order-export-cleanup-bi-hourly": {
         "task": "engine.apps.orders.cleanup_expired_order_exports",
-        "schedule": crontab(minute="*/12"),
+        "schedule": crontab(minute=0, hour="*/2"),
     },
+
+    # Backup — daily at 2am (unchanged)
     "backup-base-daily": {
         "task": "engine.apps.backup.run_base_backup",
         "schedule": env_crontab("BACKUP_CRON_BASE", "0 2 * * *"),
         "options": {"queue": "backup"},
     },
-    # Steady-state prune (same rules as pre-base-backup); caps WAL/heap between daily bases.
+
+    # Table prune — every 6 hours (unchanged)
     "backup-table-prune-steady-state": {
         "task": "engine.apps.backup.run_backup_table_prune",
         "schedule": crontab(minute=30, hour="*/6"),
