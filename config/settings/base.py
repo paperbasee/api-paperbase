@@ -339,10 +339,6 @@ CELERY_TASK_IGNORE_RESULT = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 200
 CELERY_TASK_ANNOTATIONS = {
-    "engine.apps.backup.run_backup_table_prune": {
-        "soft_time_limit": 600,
-        "time_limit": 660,
-    },
     "engine.core.purge_expired_trash": {
         "soft_time_limit": 480,
         "time_limit": 540,

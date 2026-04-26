@@ -12,9 +12,9 @@ if [ -z "${DIRECT_DATABASE_URL:-}" ]; then
   echo "ERROR: DIRECT_DATABASE_URL is not set"
   exit 1
 fi
-paperbase_require_env AWS_ACCESS_KEY_ID || exit 1
+paperbase_require_env AWS_ACCESS_KEY_ID     || exit 1
 paperbase_require_env AWS_SECRET_ACCESS_KEY || exit 1
-paperbase_require_env AWS_S3_ENDPOINT_URL || exit 1
+paperbase_require_env AWS_S3_ENDPOINT_URL   || exit 1
 
 bucket="$(paperbase_backup_bucket)"
 if [[ -z "$bucket" ]]; then
@@ -38,7 +38,7 @@ paperbase_wait_for_postgres "$DIRECT_DATABASE_URL" || exit 1
 
 stamp="$(date -u +"%Y%m%d_%H%M%S")"
 path_date="$(date -u +"%Y/%m/%d")"
-remote_key="${prefix}/${path_date}/base_${stamp}.tar.gz"
+remote_key="${prefix}/${path_date}/base_${stamp}.dump"
 
 tmp_dir="$(mktemp -d "$(paperbase_tmpdir)/base.XXXXXX")"
 cleanup() {
@@ -46,19 +46,36 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-tmp_base_tar_gz="${tmp_dir}/base.tar.gz"
-paperbase_log "backup_start type=base target=${tmp_base_tar_gz##*/}"
+tmp_dump="${tmp_dir}/base.dump"
+paperbase_log "backup_start type=pg_dump target=${tmp_dump##*/}"
 
-set -o pipefail
-paperbase_run_nice pg_basebackup -D - -Ft -z -X fetch -d "$DIRECT_DATABASE_URL" >"$tmp_base_tar_gz"
+# pg_dump in custom compressed format (-Fc)
+# Excludes high-churn table DATA (table structure is kept for restore)
+paperbase_run_nice pg_dump \
+  "${DIRECT_DATABASE_URL}" \
+  --format=custom \
+  --compress=9 \
+  --no-password \
+  --exclude-table-data='django_session' \
+  --exclude-table-data='engine_store_event_log' \
+  --exclude-table-data='django_celery_beat_periodictask' \
+  --exclude-table-data='django_celery_beat_crontabschedule' \
+  --exclude-table-data='django_celery_beat_intervalschedule' \
+  --exclude-table-data='django_celery_beat_solarschedule' \
+  --file="${tmp_dump}"
 
-paperbase_log "backup_validate type=base check=gzip"
-gzip -t "$tmp_base_tar_gz"
-paperbase_log "backup_validate type=base check=tar"
-tar -tzf "$tmp_base_tar_gz" >/dev/null
+paperbase_log "backup_validate type=pg_dump check=file"
+if [[ ! -s "$tmp_dump" ]]; then
+  paperbase_log "ERROR: dump file is empty"
+  exit 1
+fi
+
+# Validate dump is readable
+paperbase_log "backup_validate type=pg_dump check=pg_restore"
+pg_restore --list "$tmp_dump" > /dev/null
 
 paperbase_log "Uploading s3://${bucket}/${remote_key}"
-paperbase_aws_s3_cp_with_retry "$tmp_base_tar_gz" "s3://${bucket}/${remote_key}"
+paperbase_aws_s3_cp_with_retry "$tmp_dump" "s3://${bucket}/${remote_key}"
 
 paperbase_try_update_latest_pointer "$bucket" "$remote_key"
-paperbase_log "backup_end type=base status=ok remote=s3://${bucket}/${remote_key}"
+paperbase_log "backup_end type=pg_dump status=ok remote=s3://${bucket}/${remote_key}"

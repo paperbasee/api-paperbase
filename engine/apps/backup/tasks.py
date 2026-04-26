@@ -85,24 +85,3 @@ def _execute_base_backup(task) -> None:
 )
 def run_base_backup(self) -> None:
     _execute_base_backup(self)
-
-
-@app.task(
-    bind=True,
-    autoretry_for=(OSError,),
-    retry_backoff=True,
-    retry_jitter=True,
-    max_retries=2,
-    acks_late=True,
-    soft_time_limit=600,
-    time_limit=660,
-    name="engine.apps.backup.run_backup_table_prune",
-)
-def run_backup_table_prune(self) -> None:
-    """Periodic prune of non-critical tables (same logic as pre-base-backup)."""
-    logger.info("Starting backup table prune task", extra={"task": self.name})
-    counts = prune_noncritical_tables()
-    logger.info(
-        "Backup table prune task completed",
-        extra={"task": self.name, "prune": prune_summary(counts)},
-    )
