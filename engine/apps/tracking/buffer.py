@@ -9,6 +9,7 @@ This module is the ONLY place that knows about stream key naming.
 """
 from __future__ import annotations
 
+import decimal
 import json
 import logging
 import os
@@ -39,6 +40,17 @@ def _stream_key(store_public_id: str) -> str:
     return f"{STREAM_KEY_PREFIX}{store_public_id}"
 
 
+def _json_dumps(obj: Any) -> str:
+    """json.dumps that handles Decimal values from Django/DRF."""
+
+    def default(o):
+        if isinstance(o, decimal.Decimal):
+            return float(o)
+        raise TypeError(f"Object of type {type(o)} is not JSON serializable")
+
+    return json.dumps(obj, default=default)
+
+
 def push_event_to_buffer(store_public_id: str, payload: dict[str, Any]) -> bool:
     """
     Push a single validated CAPI payload into the Redis Stream for this store.
@@ -49,7 +61,7 @@ def push_event_to_buffer(store_public_id: str, payload: dict[str, Any]) -> bool:
         r = _get_redis()
         key = _stream_key(store_public_id)
 
-        r.xadd(key, {"payload": json.dumps(payload)}, maxlen=MAX_STREAM_LEN, approximate=True)
+        r.xadd(key, {"payload": _json_dumps(payload)}, maxlen=MAX_STREAM_LEN, approximate=True)
         r.sadd(ACTIVE_STORES_KEY, store_public_id)
         r.expire(ACTIVE_STORES_KEY, ACTIVE_STORE_TTL)
 
