@@ -90,7 +90,7 @@ def read_pending_events(
             consumername=consumer_name,
             streams={key: ">"},
             count=count,
-            block=0,
+            block=None,
         )
     except Exception:
         logger.exception(
