@@ -1,8 +1,11 @@
 import os
+import django
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.runtime")
+django.setup()
 
 import newrelic.agent
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.runtime")
 newrelic.agent.initialize()
 
 from django.core.asgi import get_asgi_application
