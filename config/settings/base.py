@@ -107,6 +107,11 @@ STORE_API_KEY_LAST_USED_TOUCH_INTERVAL_SECONDS = int(
 STORE_ACTIVITY_TOUCH_INTERVAL_SECONDS = int(
     os.getenv("STORE_ACTIVITY_TOUCH_INTERVAL_SECONDS", "60")
 )
+# CAPI buffer config (can be overridden per environment)
+CAPI_BATCH_SIZE = int(os.getenv("CAPI_BATCH_SIZE", "500"))
+CAPI_MAX_STREAM_LEN = int(os.getenv("CAPI_MAX_STREAM_LEN", "5000"))
+CAPI_FLUSH_INTERVAL_SECONDS = float(os.getenv("CAPI_FLUSH_INTERVAL_SECONDS", "10.0"))
+CAPI_EARLY_FLUSH_THRESHOLD = int(os.getenv("CAPI_EARLY_FLUSH_THRESHOLD", "500"))
 STORE_OTP_RATE_LIMIT_CACHE_ALIAS = os.getenv("STORE_OTP_RATE_LIMIT_CACHE_ALIAS", "default")
 INTERNAL_OVERRIDE_IP_ALLOWLIST = env_list(
     "INTERNAL_OVERRIDE_IP_ALLOWLIST",
@@ -359,9 +364,13 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 300,
         "time_limit": 330,
     },
-    "engine.apps.tracking.send_capi_event": {
-        "soft_time_limit": 25,
-        "time_limit": 35,
+    "engine.apps.tracking.coordinate_capi_flush": {
+        "soft_time_limit": 30,
+        "time_limit": 40,
+    },
+    "engine.apps.tracking.flush_store_capi": {
+        "soft_time_limit": 55,
+        "time_limit": 65,
     },
     "engine.apps.emails.send_email": {
         "soft_time_limit": 45,
@@ -386,20 +395,35 @@ CELERY_TASK_ANNOTATIONS = {
 }
 
 CELERY_TASK_ROUTES = {
-    # CRITICAL queue — user is waiting for these
+    # CRITICAL queue — user is waiting
     "engine.apps.emails.send_email":            {"queue": "critical"},
     "engine.apps.emails.send_order_email":      {"queue": "critical"},
-    "engine.apps.tracking.send_capi_event":     {"queue": "critical"},
     "engine.apps.orders.export_orders_csv":     {"queue": "critical"},
 
-    # DEFAULT queue — important but nobody watching
-    "engine.core.delete_r2_objects":            {"queue": "default"},
-    "engine.apps.inventory.sync_product_stock_cache_for_store":      {"queue": "default"},
-    "engine.apps.inventory.schedule_product_stock_cache_all_stores": {"queue": "default"},
+    # CAPI queue — dedicated, isolated from everything
+    "engine.apps.tracking.coordinate_capi_flush": {"queue": "capi"},
+    "engine.apps.tracking.flush_store_capi":       {"queue": "capi"},
 
-    # BACKUP queue — already correct, keep it
-    "engine.apps.backup.run_base_backup":       {"queue": "backup"},
+    # DEFAULT queue
+    "engine.core.delete_r2_objects":                                    {"queue": "default"},
+    "engine.apps.inventory.sync_product_stock_cache_for_store":         {"queue": "default"},
+    "engine.apps.inventory.schedule_product_stock_cache_all_stores":    {"queue": "default"},
+    "engine.apps.tracking.cleanup_old_event_logs":                      {"queue": "default"},
+
+    # BACKUP queue
+    "engine.apps.backup.run_base_backup": {"queue": "backup"},
 }
 
-CELERY_BEAT_SCHEDULE = {}
+CELERY_BEAT_SCHEDULE = {
+    "capi-flush-coordinator": {
+        "task": "engine.apps.tracking.coordinate_capi_flush",
+        "schedule": CAPI_FLUSH_INTERVAL_SECONDS,
+        "options": {"queue": "capi"},
+    },
+    "cleanup-old-event-logs": {
+        "task": "engine.apps.tracking.cleanup_old_event_logs",
+        "schedule": crontab(minute="0", hour="*/6"),
+        "options": {"queue": "default"},
+    },
+}
 

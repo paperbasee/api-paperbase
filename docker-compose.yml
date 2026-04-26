@@ -15,6 +15,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -46,6 +50,84 @@ services:
       AWS_S3_CUSTOM_DOMAIN: ${AWS_S3_CUSTOM_DOMAIN}
       PORT: "8000"
     command: python manage.py runserver 0.0.0.0:8000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-critical:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.runtime
+      DATABASE_URL: postgresql://paperbase:paperbase@db:5432/paperbase
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      celery -A config worker
+      -Q critical
+      -c 4
+      --prefetch-multiplier 1
+      -n critical@%h
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-default:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.runtime
+      DATABASE_URL: postgresql://paperbase:paperbase@db:5432/paperbase
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      celery -A config worker
+      -Q default
+      -c 2
+      --prefetch-multiplier 1
+      -n default@%h
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-capi:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.runtime
+      DATABASE_URL: postgresql://paperbase:paperbase@db:5432/paperbase
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      celery -A config worker
+      -Q capi
+      -c 8
+      --prefetch-multiplier 1
+      -n capi@%h
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  celery-beat:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.runtime
+      DATABASE_URL: postgresql://paperbase:paperbase@db:5432/paperbase
+      REDIS_URL: redis://redis:6379/0
+    command: >
+      celery -A config beat
+      --scheduler django_celery_beat.schedulers:DatabaseScheduler
+      --loglevel=info
     depends_on:
       db:
         condition: service_healthy

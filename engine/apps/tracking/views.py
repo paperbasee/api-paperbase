@@ -277,39 +277,27 @@ class TrackingEventIngestView(APIView):
                 extra={"store_public_id": getattr(store, "public_id", None)},
             )
 
+        from engine.apps.tracking.buffer import push_event_to_buffer
         from engine.apps.tracking.capi_payload import capi_enqueue_payload
-        from engine.apps.tracking.tasks import send_capi_event
 
-        try:
-            send_capi_event.delay(
-                store.public_id,
-                data["event_name"],
-                data["event_id"],
-                capi_enqueue_payload(data, client_ip=ip),
-            )
-        except Exception:
-            logger.exception(
-                "tracking.enqueue_failed",
-                extra={
-                    "store_public_id": getattr(store, "public_id", None),
-                    "event_name": data.get("event_name"),
-                    "event_id": data.get("event_id"),
-                },
-            )
-            outcome_reason = "enqueue_failed"
+        payload = capi_enqueue_payload(data, client_ip=ip)
+        pushed = push_event_to_buffer(str(store.public_id), payload)
+
+        if not pushed:
+            outcome_reason = "buffer_push_failed"
             logger.info(
                 json.dumps(
                     {
                         "store_id": store_public_id_for_log,
                         "event_name": event_name_for_log,
                         "event_id": event_id_for_log,
-                        "status": outcome_status,
+                        "status": "rejected",
                         "reason": outcome_reason,
                     },
                     separators=(",", ":"),
                 )
             )
-            return Response({"detail": "Failed to enqueue."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            return Response({"detail": "Failed to buffer event."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         outcome_status = "queued"
         logger.info(
