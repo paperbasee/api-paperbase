@@ -3,10 +3,6 @@ from django.contrib import admin
 from django.http import HttpResponse
 from django.urls import include, path
 
-import inngest.django
-from config.inngest import inngest_client
-from config import inngest_functions
-
 from config.health_views import HealthCheckView
 from engine.core.storefront_search_views import StorefrontSearchView
 
@@ -54,19 +50,6 @@ urlpatterns = [
     path("tracking/", include("engine.apps.tracking.urls")),
     path(settings.ADMIN_URL_PATH, admin.site.urls),
     path('api/v1/', include(api_v1_patterns)),
-]
-
-
-urlpatterns += [
-    inngest.django.serve(
-        inngest_client,
-        [
-            inngest_functions.purge_expired_trash,
-            inngest_functions.cleanup_event_logs,
-            inngest_functions.cleanup_order_exports,
-        ],
-        serve_path="api/inngest",
-    )
 ]
 
 handler404 = "config.urls.not_found"
