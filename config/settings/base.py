@@ -415,7 +415,7 @@ CELERY_TASK_ROUTES = {
 }
 
 CELERY_BEAT_SCHEDULE = {
-    
+
     # CAPI flush coordinator
     "capi-flush-coordinator": {
         "task": "engine.apps.tracking.coordinate_capi_flush",
@@ -451,17 +451,10 @@ CELERY_BEAT_SCHEDULE = {
         "options": {"queue": "default"},
     },
 
-    # Cleanup event logs — 7:00 AM GMT
-    "cleanup-event-logs": {
-        "task": "engine.apps.tracking.cleanup_old_event_logs",
-        "schedule": crontab(hour=7, minute=0),
-        "options": {"queue": "default"},
-    },
-
-    # Cleanup order exports — 7:20 AM GMT
+    # Cleanup order exports — 7:00 AM GMT
     "cleanup-order-exports": {
         "task": "engine.apps.orders.cleanup_expired_order_exports",
-        "schedule": crontab(hour=7, minute=20),
+        "schedule": crontab(hour=7, minute=0),
         "options": {"queue": "default"},
     },
 }
