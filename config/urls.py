@@ -68,7 +68,6 @@ urlpatterns += [
             inngest_functions.purge_expired_trash,
             inngest_functions.cleanup_event_logs,
             inngest_functions.cleanup_order_exports,
-            inngest_functions.backup_table_prune,
         ],
         serve_path="api/inngest",
     )

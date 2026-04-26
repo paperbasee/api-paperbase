@@ -33,14 +33,3 @@ def cleanup_order_exports(ctx: inngest.ContextSync) -> str:
     from engine.apps.orders.export_cleanup import cleanup_expired_order_exports
     result = cleanup_expired_order_exports()
     return f"cleaned: {result}"
-
-
-@inngest_client.create_function(
-    fn_id="backup-table-prune",
-    trigger=inngest.TriggerCron(cron="30 */6 * * *"),  # every 6 hours
-    retries=1,
-)
-def backup_table_prune(ctx: inngest.ContextSync) -> str:
-    from engine.apps.backup.tasks import run_backup_table_prune
-    run_backup_table_prune()
-    return "pruned"

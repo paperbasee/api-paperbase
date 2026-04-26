@@ -57,7 +57,13 @@ paperbase_run_nice pg_dump \
   --compress=9 \
   --no-password \
   --exclude-table-data='django_session' \
-  --exclude-table-data='engine_store_event_log' \
+  --exclude-table-data='django_admin_log' \
+  --exclude-table-data='core_activitylog' \
+  --exclude-table-data='emails_emaillog' \
+  --exclude-table-data='fraud_check_fraudchecklog' \
+  --exclude-table-data='marketing_integrations_storeeventlog' \
+  --exclude-table-data='notifications_notificationdismissal' \
+  --exclude-table-data='analytics_storedashboardstatssnapshot' \
   --exclude-table-data='django_celery_beat_periodictask' \
   --exclude-table-data='django_celery_beat_crontabschedule' \
   --exclude-table-data='django_celery_beat_intervalschedule' \
