@@ -81,6 +81,21 @@
     return readCookie("_fbc");
   }
 
+  function getTtp() {
+    return readCookie("_ttp");
+  }
+
+  function getTtclid() {
+    var fromCookie = readCookie("ttclid");
+    if (fromCookie) return fromCookie;
+    try {
+      var params = new URLSearchParams(window.location.search);
+      return params.get("ttclid") || null;
+    } catch (e) {
+      return null;
+    }
+  }
+
   function currentUrl() {
     try {
       return String(window.location.href || "");
@@ -347,6 +362,8 @@
       content_ids: contentIds,
       fbp: getFbp(),
       fbc: getFbc(),
+      ttp: getTtp(),
+      ttclid: getTtclid(),
       user_agent: userAgent(),
       extra: (data && data.extra && typeof data.extra === "object") ? data.extra : {},
     };

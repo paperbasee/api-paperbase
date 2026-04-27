@@ -45,6 +45,8 @@ class TrackingEventIngestSerializer(serializers.Serializer):
 
     fbp = serializers.CharField(required=False, allow_null=True, default=None, max_length=512, allow_blank=False)
     fbc = serializers.CharField(required=False, allow_null=True, default=None, max_length=512, allow_blank=False)
+    ttp = serializers.CharField(required=False, allow_null=True, default=None, max_length=512, allow_blank=False)
+    ttclid = serializers.CharField(required=False, allow_null=True, default=None, max_length=512, allow_blank=False)
     user_agent = serializers.CharField(min_length=1, max_length=512, allow_blank=False, trim_whitespace=False)
     extra = serializers.DictField(required=False, default=dict)
 
@@ -95,6 +97,20 @@ class TrackingEventIngestSerializer(serializers.Serializer):
             return None
         if not isinstance(value, str):
             raise serializers.ValidationError("fbc must be a string or null.")
+        return value
+
+    def validate_ttp(self, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise serializers.ValidationError("ttp must be a string or null.")
+        return value
+
+    def validate_ttclid(self, value):
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise serializers.ValidationError("ttclid must be a string or null.")
         return value
 
     def validate_extra(self, value):

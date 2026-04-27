@@ -281,7 +281,7 @@ class TrackingEventIngestView(APIView):
         from engine.apps.tracking.capi_payload import capi_enqueue_payload
 
         payload = capi_enqueue_payload(data, client_ip=ip)
-        pushed = push_event_to_buffer(str(store.public_id), payload)
+        pushed = push_event_to_buffer(str(store.public_id), payload, platform="meta")
 
         if not pushed:
             outcome_reason = "buffer_push_failed"
@@ -298,6 +298,17 @@ class TrackingEventIngestView(APIView):
                 )
             )
             return Response({"detail": "Failed to buffer event."}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        try:
+            from engine.apps.tracking.tiktok_payload import tiktok_enqueue_payload
+
+            tiktok_payload = tiktok_enqueue_payload(data, client_ip=ip)
+            push_event_to_buffer(str(store.public_id), tiktok_payload, platform="tiktok")
+        except Exception:
+            logger.exception(
+                "tracking.tiktok_buffer_push_failed",
+                extra={"store_public_id": str(store.public_id)},
+            )
 
         outcome_status = "queued"
         logger.info(

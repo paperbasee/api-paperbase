@@ -10,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 EVENT_LOG_RETENTION_HOURS = int(os.environ.get("EVENT_LOG_RETENTION_HOURS", "72"))
 
-# Ensure Celery discovers tasks declared in tracking.flush_tasks.
+# Ensure Celery discovers tasks declared in tracking.flush_tasks / tiktok_flush_tasks.
 from engine.apps.tracking import flush_tasks  # noqa: F401,E402
+from engine.apps.tracking import tiktok_flush_tasks  # noqa: F401,E402
 
 
 @app.task(

@@ -35,10 +35,11 @@ class PushEventToBufferTests(TestCase):
         }
 
         with patch("engine.apps.tracking.buffer._get_redis", return_value=fake_redis):
-            pushed = buffer.push_event_to_buffer("store-123", payload)
+            pushed = buffer.push_event_to_buffer("store-123", payload, platform="meta")
 
         self.assertTrue(pushed)
         self.assertEqual(len(fake_redis.xadd_calls), 1)
-        _key, fields, _maxlen, _approximate = fake_redis.xadd_calls[0]
+        key, fields, _maxlen, _approximate = fake_redis.xadd_calls[0]
+        self.assertEqual(key, "capi:meta:stream:store-123")
         decoded = json.loads(fields["payload"])
         self.assertEqual(decoded["value"], 12.34)

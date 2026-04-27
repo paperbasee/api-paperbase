@@ -399,6 +399,14 @@ CELERY_TASK_ANNOTATIONS = {
         "soft_time_limit": 55,
         "time_limit": 65,
     },
+    "engine.apps.tracking.coordinate_tiktok_flush": {
+        "soft_time_limit": 30,
+        "time_limit": 40,
+    },
+    "engine.apps.tracking.flush_store_tiktok": {
+        "soft_time_limit": 55,
+        "time_limit": 65,
+    },
     "engine.apps.emails.send_email": {
         "soft_time_limit": 45,
         "time_limit": 55,
@@ -430,6 +438,8 @@ CELERY_TASK_ROUTES = {
     # CAPI queue — dedicated, isolated from everything
     "engine.apps.tracking.coordinate_capi_flush": {"queue": "capi"},
     "engine.apps.tracking.flush_store_capi":       {"queue": "capi"},
+    "engine.apps.tracking.coordinate_tiktok_flush": {"queue": "capi"},
+    "engine.apps.tracking.flush_store_tiktok":      {"queue": "capi"},
 
     # DEFAULT queue
     "engine.core.delete_r2_objects":                                    {"queue": "default"},
@@ -446,6 +456,12 @@ CELERY_BEAT_SCHEDULE = {
     # CAPI flush coordinator
     "capi-flush-coordinator": {
         "task": "engine.apps.tracking.coordinate_capi_flush",
+        "schedule": CAPI_FLUSH_INTERVAL_SECONDS,
+        "options": {"queue": "capi"},
+    },
+
+    "tiktok-flush-coordinator": {
+        "task": "engine.apps.tracking.coordinate_tiktok_flush",
         "schedule": CAPI_FLUSH_INTERVAL_SECONDS,
         "options": {"queue": "capi"},
     },
