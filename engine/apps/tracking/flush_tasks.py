@@ -45,14 +45,26 @@ def _get_redis() -> redis_lib.Redis:
 )
 def coordinate_capi_flush() -> None:
     from engine.apps.tracking.buffer import get_active_stores
+    from engine.apps.stores.models import Store
 
     r = _get_redis()
     store_ids = get_active_stores(r, platform="meta")
     if not store_ids:
         return
 
+    store_map = {
+        str(s.public_id): s
+        for s in Store.objects.filter(
+            public_id__in=store_ids,
+            is_active=True,
+        ).select_related("owner")
+    }
     logger.info("tracking.coordinator_dispatching", extra={"store_count": len(store_ids)})
     for store_public_id in store_ids:
+        if store_map.get(store_public_id) is None:
+            continue
+        # TODO: Pre-fetch MarketingIntegration rows in coordinator and pass compact
+        # credentials to workers when task payload refactor is scheduled.
         flush_store_capi.apply_async(args=[store_public_id], queue="capi", ignore_result=True)
 
 

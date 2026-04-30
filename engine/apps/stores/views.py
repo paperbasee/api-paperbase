@@ -31,6 +31,7 @@ from .services import (
     create_store_api_key,
     get_active_store_api_key,
     get_cached_store_settings,
+    invalidate_store_api_key_resolution_cache_from_digest,
     invalidate_store_settings_cache,
     normalize_store_code_base_from_name,
     revoke_store_api_key,
@@ -38,6 +39,27 @@ from .services import (
 )
 
 User = get_user_model()
+
+
+def _deactivate_active_store_api_keys(store) -> None:
+    """Rotate active API keys and invalidate resolver cache digests."""
+    rows = list(
+        StoreApiKey.objects.filter(
+            store=store,
+            revoked_at__isnull=True,
+            is_active=True,
+        ).only("id", "key_hash")
+    )
+    if not rows:
+        return
+    now = timezone.now()
+    StoreApiKey.objects.filter(id__in=[row.id for row in rows]).update(
+        revoked_at=now,
+        is_active=False,
+        updated_at=now,
+    )
+    for row in rows:
+        invalidate_store_api_key_resolution_cache_from_digest(row.key_hash)
 
 
 def _reissue_jwt_active_store(request, store_public_id: str) -> dict:
@@ -289,11 +311,7 @@ class StoreSettingsViewSet(
             )
 
         name = (request.data.get("name") or "").strip()
-        StoreApiKey.objects.filter(
-            store=ctx.store,
-            revoked_at__isnull=True,
-            is_active=True,
-        ).update(revoked_at=timezone.now(), is_active=False, updated_at=timezone.now())
+        _deactivate_active_store_api_keys(ctx.store)
         key_type = (request.data.get("key_type") or StoreApiKey.KeyType.PUBLIC).strip().lower()
         row, raw_api_key = create_store_api_key(ctx.store, name=name, key_type=key_type)
         return Response(
@@ -348,11 +366,7 @@ class StoreAPIKeyManagementViewSet(ProvenTenantContextMixin, viewsets.ViewSet):
         name = (request.data.get("name") or "").strip()
         key_type = (request.data.get("key_type") or StoreApiKey.KeyType.PUBLIC).strip().lower()
         # Dashboard UX expects a single current key; creating a new key rotates the old one.
-        StoreApiKey.objects.filter(
-            store=store,
-            revoked_at__isnull=True,
-            is_active=True,
-        ).update(revoked_at=timezone.now(), is_active=False, updated_at=timezone.now())
+        _deactivate_active_store_api_keys(store)
         row, raw_api_key = create_store_api_key(store, name=name, key_type=key_type)
         return Response(
             {

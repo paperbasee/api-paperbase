@@ -14,7 +14,6 @@ from engine.apps.stores.models import StoreApiKey
 from engine.apps.stores.services import (
     get_request_store_settings_row,
     resolve_active_store_api_key,
-    touch_store_api_key_last_used,
 )
 from engine.core import cache_service
 from engine.apps.tracking.ip import client_ip_from_request
@@ -118,22 +117,32 @@ class TrackingEventIngestView(APIView):
             )
             return Response({"detail": "Storefront API key required."}, status=status.HTTP_401_UNAUTHORIZED)
 
-        key_row = resolve_active_store_api_key(token)
+        key_row = getattr(request, "store_api_key", None)
         if key_row is None:
-            outcome_reason = "invalid_api_key"
-            logger.info(
-                json.dumps(
-                    {
-                        "store_id": store_public_id_for_log,
-                        "event_name": event_name_for_log,
-                        "event_id": event_id_for_log,
-                        "status": outcome_status,
-                        "reason": outcome_reason,
-                    },
-                    separators=(",", ":"),
+            # Middleware did not resolve — fall back to direct resolution.
+            # This handles edge cases where middleware resolution was skipped
+            # (e.g. future middleware reordering, custom test clients).
+            token_fb = _bearer_token_from_headers(request)
+            if token_fb and token_fb.startswith("ak_pk_"):
+                key_row = resolve_active_store_api_key(token_fb)
+            if key_row is None:
+                outcome_reason = "missing_api_key"
+                logger.info(
+                    json.dumps(
+                        {
+                            "store_id": store_public_id_for_log,
+                            "event_name": event_name_for_log,
+                            "event_id": event_id_for_log,
+                            "status": outcome_status,
+                            "reason": outcome_reason,
+                        },
+                        separators=(",", ":"),
+                    )
                 )
-            )
-            return Response({"detail": "Invalid API key."}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response(
+                    {"detail": "Storefront API key required."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
         if getattr(key_row, "key_type", None) != StoreApiKey.KeyType.PUBLIC:
             outcome_reason = "non_public_api_key"
             logger.info(
@@ -267,15 +276,6 @@ class TrackingEventIngestView(APIView):
         ip = client_ip_from_request(request)
         if ip:
             data["client_ip_address"] = ip
-
-        # Best-effort usage timestamp update
-        try:
-            touch_store_api_key_last_used(key_row)
-        except Exception:
-            logger.exception(
-                "tracking.touch_store_api_key_last_used_failed",
-                extra={"store_public_id": getattr(store, "public_id", None)},
-            )
 
         from engine.apps.tracking.buffer import push_event_to_buffer
         from engine.apps.tracking.capi_payload import capi_enqueue_payload

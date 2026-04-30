@@ -207,6 +207,16 @@ class Product(models.Model):
 
     class Meta:
         ordering = ["display_order", "name"]
+        indexes = [
+            models.Index(
+                fields=["store", "is_active", "status", "display_order"],
+                name="product_store_active_status_idx",
+            ),
+            models.Index(
+                fields=["store", "category", "is_active"],
+                name="product_store_category_idx",
+            ),
+        ]
         constraints = [
             models.UniqueConstraint(
                 fields=["store", "slug"],

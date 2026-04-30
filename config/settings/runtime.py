@@ -77,6 +77,18 @@ _default_db = dj_database_url.parse(DATABASE_URL, conn_max_age=600)
 _default_db["DISABLE_SERVER_SIDE_CURSORS"] = True
 DATABASES = {"default": _default_db}
 
+# DIRECT_DATABASE_URL bypasses PgBouncer for migrations and
+# backup scripts. DDL transactions (ALTER TABLE, CREATE INDEX)
+# are incompatible with PgBouncer transaction mode and must
+# use a direct Postgres connection.
+_direct_db_url = os.getenv("DIRECT_DATABASE_URL", "").strip()
+if _direct_db_url:
+    _direct_db = dj_database_url.parse(_direct_db_url, conn_max_age=0)
+    _direct_db["DISABLE_SERVER_SIDE_CURSORS"] = False
+    _direct_db.setdefault("OPTIONS", {})
+    _direct_db["OPTIONS"]["connect_timeout"] = 10
+    DATABASES["direct"] = _direct_db
+
 # ---------------------------------------------------------------------------
 # Redis / Channels / Cache / Celery
 # ---------------------------------------------------------------------------

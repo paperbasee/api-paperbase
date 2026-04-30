@@ -231,6 +231,7 @@ class TenantApiKeyMiddleware(MiddlewareMixin):
             return JsonResponse({"detail": "Secret API keys cannot access storefront endpoints."}, status=403)
 
         request.api_key = key_row
+        request.store_api_key = key_row
         request.store = key_row.store
         if not key_row.store.is_active:
             return JsonResponse({"detail": "Store is not active."}, status=403)
@@ -257,6 +258,7 @@ class TenantApiKeyMiddleware(MiddlewareMixin):
                     status=403,
                 )
             request.api_key = key_row
+            request.store_api_key = key_row
             request.store = key_row.store
             if not key_row.store.is_active:
                 return JsonResponse({"detail": "Store is not active."}, status=403)
@@ -272,4 +274,7 @@ class TenantApiKeyMiddleware(MiddlewareMixin):
         return JsonResponse({"detail": "API key cannot access this endpoint."}, status=403)
 
     def process_response(self, request: HttpRequest, response):
+        if getattr(request, "api_key", None) is not None:
+            # Storefront responses must vary by API key/auth header for correct edge caching.
+            response["Vary"] = "Authorization"
         return response

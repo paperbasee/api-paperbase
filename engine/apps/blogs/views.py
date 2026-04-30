@@ -4,6 +4,7 @@ from rest_framework.views import APIView
 
 from config.permissions import IsStorefrontAPIKey
 from engine.apps.products.views import StorefrontTenantMixin
+from engine.core.http_cache import storefront_cache_headers
 from engine.core.permissions import IsModuleEnabled
 from engine.core.tenancy import get_active_store, require_api_key_store
 
@@ -35,6 +36,7 @@ class PublicBlogListView(_BlogStorefrontBase):
         tag_slug = (request.query_params.get("tag") or "").strip() or None
         data = services.get_public_blogs(store, request, tag_slug=tag_slug)
         return Response(data)
+    get = storefront_cache_headers(max_age=120)(get)
 
 
 class PublicBlogDetailView(_BlogStorefrontBase):
@@ -46,3 +48,4 @@ class PublicBlogDetailView(_BlogStorefrontBase):
         if data is None:
             return Response({"detail": "Not found."}, status=404)
         return Response(data)
+    get = storefront_cache_headers(max_age=120)(get)

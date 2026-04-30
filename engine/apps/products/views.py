@@ -6,6 +6,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.permissions import IsStorefrontAPIKey
+from engine.core.http_cache import storefront_cache_headers
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
 from .models import Product
@@ -58,6 +59,7 @@ class ProductListView(StorefrontTenantMixin, ListAPIView):
             store.public_id, request.query_params, response.data
         )
         return response
+    list = storefront_cache_headers(max_age=60)(list)
 
 
 class ProductDetailView(StorefrontTenantMixin, RetrieveAPIView):
@@ -74,6 +76,7 @@ class ProductDetailView(StorefrontTenantMixin, RetrieveAPIView):
         identifier = self.kwargs.get(self.lookup_url_kwarg)
         data = services.get_product_detail(store, identifier, request)
         return Response(data)
+    retrieve = storefront_cache_headers(max_age=60)(retrieve)
 
 
 class ProductRelatedView(StorefrontTenantMixin, ListAPIView):
@@ -130,6 +133,7 @@ class CategoryListView(StorefrontTenantMixin, ListAPIView):
             store.public_id, request.query_params, response.data
         )
         return response
+    list = storefront_cache_headers(max_age=120)(list)
 
 
 class CategoryDetailView(StorefrontTenantMixin, RetrieveAPIView):
@@ -146,6 +150,7 @@ class CategoryDetailView(StorefrontTenantMixin, RetrieveAPIView):
         slug = self.kwargs.get('slug')
         data = services.get_category_detail(store, slug, request)
         return Response(data)
+    retrieve = storefront_cache_headers(max_age=120)(retrieve)
 
 
 class CatalogFiltersView(StorefrontTenantMixin, APIView):

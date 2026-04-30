@@ -7,6 +7,7 @@ import secrets
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import ImproperlyConfigured
 from django.db import transaction
 from django.http import HttpRequest
@@ -21,6 +22,8 @@ from .models import Store, StoreApiKey, StoreMembership, StoreSettings
 from .store_activity import touch_store_activity
 
 User = get_user_model()
+_API_KEY_CACHE_SENTINEL = "__none__"
+_API_KEY_CACHE_TTL_SECONDS = 300
 
 ORDER_EMAIL_NOTIFICATIONS_FEATURE = "order_email_notifications"
 
@@ -85,6 +88,21 @@ def _hash_store_api_key(raw_key: str) -> str:
     return hmac.new(_api_key_secret(), material, hashlib.sha256).hexdigest()
 
 
+def _api_key_resolution_cache_key(digest: str) -> str:
+    return f"apikey:resolved:{digest}"
+
+
+def invalidate_store_api_key_resolution_cache_from_digest(digest: str) -> None:
+    """Best-effort cache invalidation for resolved API keys."""
+    if not digest:
+        return
+    try:
+        cache.delete(_api_key_resolution_cache_key(digest))
+    except Exception:
+        # Cache failures must never block source-of-truth DB writes.
+        pass
+
+
 def generate_store_api_key(*, key_type: str) -> str:
     """
     Create a high-entropy plaintext API key for one-time display.
@@ -132,6 +150,8 @@ def revoke_store_api_key(key_row: StoreApiKey) -> None:
     key_row.revoked_at = timezone.now()
     key_row.is_active = False
     key_row.save(update_fields=["revoked_at", "is_active", "updated_at"])
+    # key_hash already stores the HMAC digest used by resolver cache keys.
+    invalidate_store_api_key_resolution_cache_from_digest(key_row.key_hash)
 
 
 def get_active_store_api_key(store: Store, *, public_id: str | None = None) -> StoreApiKey | None:
@@ -149,7 +169,31 @@ def resolve_active_store_api_key(raw_key: str) -> StoreApiKey | None:
     if not raw_key:
         return None
     digest = _hash_store_api_key(raw_key)
-    return (
+    cache_key = _api_key_resolution_cache_key(digest)
+
+    try:
+        cached = cache.get(cache_key)
+    except Exception:
+        cached = None
+    else:
+        if cached == _API_KEY_CACHE_SENTINEL:
+            return None
+        if isinstance(cached, str) and cached:
+            row = (
+                StoreApiKey.objects.select_related("store", "store__owner")
+                .filter(
+                    public_id=cached,
+                    key_hash=digest,
+                    revoked_at__isnull=True,
+                    is_active=True,
+                    store__is_active=True,
+                )
+                .first()
+            )
+            if row is not None:
+                return row
+
+    row = (
         StoreApiKey.objects.select_related("store", "store__owner")
         .filter(
             key_hash=digest,
@@ -159,6 +203,15 @@ def resolve_active_store_api_key(raw_key: str) -> StoreApiKey | None:
         )
         .first()
     )
+    try:
+        cache.set(
+            cache_key,
+            row.public_id if row is not None else _API_KEY_CACHE_SENTINEL,
+            _API_KEY_CACHE_TTL_SECONDS,
+        )
+    except Exception:
+        pass
+    return row
 
 
 def touch_store_api_key_last_used(key_row: StoreApiKey) -> None:

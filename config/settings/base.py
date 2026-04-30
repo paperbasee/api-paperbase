@@ -111,7 +111,7 @@ STORE_ACTIVITY_TOUCH_INTERVAL_SECONDS = int(
 # CAPI buffer config (can be overridden per environment)
 CAPI_BATCH_SIZE = int(os.getenv("CAPI_BATCH_SIZE", "500"))
 CAPI_MAX_STREAM_LEN = int(os.getenv("CAPI_MAX_STREAM_LEN", "5000"))
-CAPI_FLUSH_INTERVAL_SECONDS = float(os.getenv("CAPI_FLUSH_INTERVAL_SECONDS", "10.0"))
+CAPI_FLUSH_INTERVAL_SECONDS = float(os.getenv("CAPI_FLUSH_INTERVAL_SECONDS", "30.0"))
 CAPI_EARLY_FLUSH_THRESHOLD = int(os.getenv("CAPI_EARLY_FLUSH_THRESHOLD", "500"))
 STORE_OTP_RATE_LIMIT_CACHE_ALIAS = os.getenv("STORE_OTP_RATE_LIMIT_CACHE_ALIAS", "default")
 INTERNAL_OVERRIDE_IP_ALLOWLIST = env_list(
@@ -193,6 +193,7 @@ CORS_EXPOSE_HEADERS = [
 
 # Middleware
 MIDDLEWARE = [
+    "django.middleware.gzip.GZipMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",

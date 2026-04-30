@@ -7,3 +7,6 @@ class PopupsConfig(AppConfig):
     label = "popups"
     verbose_name = "Popups"
 
+    def ready(self):
+        import engine.apps.popups.signals  # noqa: F401
+

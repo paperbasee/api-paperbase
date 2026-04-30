@@ -34,6 +34,13 @@ PY
 echo "Waiting for database..."
 wait_for_postgres
 echo "Database ready"
+echo "Running migrations..."
+if [ -n "${DIRECT_DATABASE_URL:-}" ]; then
+  python manage.py migrate --database=direct --noinput
+else
+  python manage.py migrate --noinput
+fi
+echo "Migrations complete"
 echo "Collecting static files..."
 python manage.py collectstatic --noinput
 echo "Static files ready"

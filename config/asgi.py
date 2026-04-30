@@ -4,10 +4,6 @@ import django
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings.runtime")
 django.setup()
 
-import newrelic.agent
-
-newrelic.agent.initialize()
-
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
 from channels.security.websocket import AllowedHostsOriginValidator
@@ -17,7 +13,7 @@ from engine.core.routing import websocket_urlpatterns
 from engine.core.ws_api_key import APIKeyWebSocketMiddleware
 
 
-django_asgi_app = newrelic.agent.ASGIApplicationWrapper(get_asgi_application())
+django_asgi_app = get_asgi_application()
 
 
 async def lifespan_app(scope, receive, send):

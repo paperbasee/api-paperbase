@@ -5,6 +5,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from config.permissions import IsStorefrontAPIKey
+from engine.core import cache_service
+from engine.core.http_cache import storefront_cache_headers
 from engine.core.media_urls import absolute_media_url
 from engine.core.tenancy import require_api_key_store, require_resolved_store
 
@@ -38,6 +40,10 @@ class StorePublicView(APIView):
 
     def get(self, request):
         store = require_api_key_store(request)
+        cache_key = f"cache:{store.public_id}:store_public:v1"
+        cached = cache_service.get(cache_key)
+        if cached is not None:
+            return Response(cached)
         settings_row = getattr(store, "settings", None)
         if settings_row is None:
             from engine.apps.stores.models import StoreSettings
@@ -124,4 +130,6 @@ class StorePublicView(APIView):
             },
             "social_links": social_links,
         }
+        cache_service.set(cache_key, payload, settings.CACHE_TTL_STORE_SETTINGS)
         return Response(payload)
+    get = storefront_cache_headers(max_age=60)(get)

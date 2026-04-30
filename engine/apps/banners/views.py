@@ -4,6 +4,7 @@ from rest_framework.exceptions import ValidationError
 
 from config.permissions import IsStorefrontAPIKey
 from engine.apps.products.views import StorefrontTenantMixin
+from engine.core.http_cache import storefront_cache_headers
 from engine.core.tenancy import get_active_store
 
 from .serializers import PublicBannerSerializer
@@ -32,3 +33,4 @@ class PublicBannerListView(StorefrontTenantMixin, ListAPIView):
                 raise ValidationError({"slot": "Invalid placement slot selected"})
         data = services.get_active_banners(ctx.store, request, slot=slot or None)
         return Response(data)
+    list = storefront_cache_headers(max_age=120)(list)
