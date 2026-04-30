@@ -50,6 +50,12 @@ class PricingBreakdownView(APIView):
         }
         cache_hash = cache_service.hash_params(cache_params)
         cache_key = cache_service.build_key(store.public_id, "pricing_breakdown", cache_hash)
+        cached_payload = cache_service.get(cache_key)
+        if cached_payload is not None:
+            return Response(
+                cached_payload,
+                status=status.HTTP_200_OK,
+            )
 
         product_public_ids = [product_public_id for product_public_id, _variant_public_id, _qty in normalized_items]
         products = {
@@ -98,17 +104,15 @@ class PricingBreakdownView(APIView):
                 store=store, public_id=shipping_method_public_id, is_active=True
             ).first()
 
-        def fetcher():
-            breakdown = PricingEngine.compute(
-                store=store,
-                lines=pricing_lines,
-                shipping_zone_pk=zone.id,
-                shipping_method_pk=method.id if method else None,
-                resolved_shipping_zone=zone,
-            )
-            return storefront_pricing_breakdown_response(breakdown)
-
-        payload = cache_service.get_or_set(cache_key, fetcher, 30)
+        breakdown = PricingEngine.compute(
+            store=store,
+            lines=pricing_lines,
+            shipping_zone_pk=zone.id,
+            shipping_method_pk=method.id if method else None,
+            resolved_shipping_zone=zone,
+        )
+        payload = storefront_pricing_breakdown_response(breakdown)
+        cache_service.set(cache_key, payload, 30)
         return Response(
             payload,
             status=status.HTTP_200_OK,
