@@ -210,11 +210,15 @@ class Product(models.Model):
         indexes = [
             models.Index(
                 fields=["store", "is_active", "status", "display_order"],
-                name="product_store_active_status_idx",
+                name="prod_store_active_status_idx",
             ),
             models.Index(
-                fields=["store", "category", "is_active"],
-                name="product_store_category_idx",
+                fields=["store", "category", "is_active", "status"],
+                name="prod_store_cat_active_idx",
+            ),
+            models.Index(
+                fields=["store", "created_at"],
+                name="prod_store_created_idx",
             ),
         ]
         constraints = [
