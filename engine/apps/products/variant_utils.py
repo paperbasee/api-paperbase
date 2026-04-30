@@ -2,10 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from engine.apps.products.models import Product, ProductVariant
 
 
+def _prefetched_active_variants(product: Product) -> Sequence[ProductVariant] | None:
+    prefetched = getattr(product, "active_variants_prefetched", None)
+    if prefetched is None:
+        return None
+    if isinstance(prefetched, Sequence):
+        return prefetched
+    return None
+
+
 def product_has_active_variants(product: Product) -> bool:
+    prefetched = _prefetched_active_variants(product)
+    if prefetched is not None:
+        return len(prefetched) > 0
     return product.variants.filter(is_active=True).exists()
 
 
@@ -32,6 +46,14 @@ def resolve_storefront_variant(
             raise serializers.ValidationError(
                 {"error": "Variant selection required for this product"}
             )
+        prefetched = _prefetched_active_variants(product)
+        if prefetched is not None:
+            variant = next((v for v in prefetched if v.public_id == raw), None)
+            if not variant:
+                raise serializers.ValidationError(
+                    {"error": "Invalid or inactive variant for this product."}
+                )
+            return variant
         variant = (
             ProductVariant.objects.filter(
                 public_id=raw,

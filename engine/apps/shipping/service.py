@@ -25,6 +25,7 @@ def quote_shipping(
     order_subtotal: Decimal,
     shipping_zone_pk: int | None,
     shipping_method_pk: int | None = None,
+    resolved_zone: ShippingZone | None = None,
 ) -> ShippingQuote:
     """
     Return the best matching shipping quote for a zone-selected order.
@@ -32,40 +33,46 @@ def quote_shipping(
     if shipping_zone_pk is None:
         raise ValidationError("Shipping zone is required.")
 
-    zone = ShippingZone.objects.filter(
-        store=store,
-        is_active=True,
-        id=shipping_zone_pk,
-    ).first()
+    zone = resolved_zone
+    if zone is None:
+        zone = ShippingZone.objects.filter(
+            store=store,
+            is_active=True,
+            id=shipping_zone_pk,
+        ).first()
     if zone is None:
         raise ValidationError("Invalid shipping zone for this store.")
 
-    methods = (
+    methods = list(
         ShippingMethod.objects.filter(store=store, is_active=True)
         .prefetch_related("zones")
         .order_by("order", "id")
     )
     if shipping_method_pk is not None:
-        methods = methods.filter(id=shipping_method_pk)
+        methods = [method for method in methods if method.id == shipping_method_pk]
+
+    rates = list(
+        ShippingRate.objects.filter(
+            store=store,
+            is_active=True,
+            shipping_zone=zone,
+            shipping_method_id__in=[method.id for method in methods],
+        )
+        .select_related("shipping_zone", "shipping_method")
+        .order_by("shipping_method_id", "price", "id")
+    )
+    rates_by_method_id: dict[int, list[ShippingRate]] = {}
+    for rate in rates:
+        rates_by_method_id.setdefault(rate.shipping_method_id, []).append(rate)
 
     best: ShippingQuote | None = None
 
     for method in methods:
-        method_zone_ids = set(method.zones.values_list("id", flat=True))
+        method_zone_ids = {zone_row.id for zone_row in method.zones.all()}
         if method_zone_ids and zone.id not in method_zone_ids:
             continue
 
-        rates = (
-            ShippingRate.objects.filter(
-                store=store,
-                is_active=True,
-                shipping_method=method,
-                shipping_zone=zone,
-            )
-            .select_related("shipping_zone", "shipping_method")
-            .order_by("price", "id")
-        )
-        for rate in rates:
+        for rate in rates_by_method_id.get(method.id, []):
             if rate.min_order_total is not None and order_subtotal < rate.min_order_total:
                 continue
             if rate.max_order_total is not None and order_subtotal > rate.max_order_total:
@@ -119,20 +126,40 @@ def get_shipping_options(store, zone_public_id: str, order_total_str: str | None
         if zone is None:
             return []
 
-        methods = ShippingMethod.objects.filter(
+        methods = list(ShippingMethod.objects.filter(
             store=store, is_active=True
-        ).prefetch_related("rates__shipping_zone").distinct()
+        ).order_by("order", "id"))
+        if not methods:
+            return []
+
+        method_ids = [method.id for method in methods]
+        through_rows = ShippingMethod.zones.through.objects.filter(
+            shippingmethod_id__in=method_ids
+        ).values_list("shippingmethod_id", "shippingzone_id")
+        zone_ids_by_method_id: dict[int, set[int]] = {}
+        for method_id, zone_id in through_rows:
+            zone_ids_by_method_id.setdefault(method_id, set()).add(zone_id)
+
+        rates = list(
+            ShippingRate.objects.filter(
+                store=store,
+                is_active=True,
+                shipping_zone_id=zone.id,
+                shipping_method_id__in=method_ids,
+            )
+            .select_related("shipping_zone", "shipping_method")
+            .order_by("shipping_method__order", "shipping_method_id", "price", "id")
+        )
+        rates_by_method_id: dict[int, list[ShippingRate]] = {}
+        for rate in rates:
+            rates_by_method_id.setdefault(rate.shipping_method_id, []).append(rate)
 
         options = []
         for method in methods:
-            method_zone_ids = set(method.zones.values_list("id", flat=True))
+            method_zone_ids = zone_ids_by_method_id.get(method.id, set())
             if method_zone_ids and zone.id not in method_zone_ids:
                 continue
-            for rate in method.rates.filter(
-                store=store, is_active=True
-            ).select_related("shipping_zone"):
-                if rate.shipping_zone_id != zone.id:
-                    continue
+            for rate in rates_by_method_id.get(method.id, []):
                 if order_total is not None:
                     if rate.min_order_total and order_total < rate.min_order_total:
                         continue

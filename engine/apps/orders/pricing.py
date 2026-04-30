@@ -41,6 +41,7 @@ class PricingEngine:
         lines: list[dict],
         shipping_zone_pk=None,
         shipping_method_pk=None,
+        resolved_shipping_zone=None,
     ) -> PricingBreakdown:
         base_subtotal = Decimal("0.00")
         breakdown_lines: list[PricingLineBreakdown] = []
@@ -66,6 +67,7 @@ class PricingEngine:
             order_subtotal=base_subtotal,
             shipping_zone_pk=shipping_zone_pk,
             shipping_method_pk=shipping_method_pk,
+            resolved_zone=resolved_shipping_zone,
         )
         shipping_cost = cls._money(shipping_quote.shipping_cost)
         final_total = cls._money(base_subtotal + shipping_cost)
