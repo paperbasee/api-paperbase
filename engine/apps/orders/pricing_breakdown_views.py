@@ -1,14 +1,14 @@
 """Full-cart storefront pricing (merchandise subtotal + shipping)."""
 
 from django.db.models import Prefetch
-from rest_framework import serializers, status
+from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from engine.core import cache_service
 from config.permissions import IsStorefrontAPIKey
 from engine.apps.products.models import Product, ProductVariant
-from engine.apps.products.variant_utils import resolve_storefront_variant, unit_price_for_line
+from engine.apps.products.variant_utils import product_has_active_variants, unit_price_for_line
 from engine.apps.shipping.models import ShippingMethod, ShippingZone
 from engine.core.tenancy import require_api_key_store
 
@@ -75,18 +75,47 @@ class PricingBreakdownView(APIView):
                 )
             )
         }
+        variant_public_ids = sorted(
+            {
+                variant_public_id
+                for _product_public_id, variant_public_id, _qty in normalized_items
+                if variant_public_id
+            }
+        )
+        variants_by_public_id = {
+            str(v.public_id): v
+            for v in ProductVariant.objects.filter(
+                public_id__in=variant_public_ids,
+                store=store,
+                is_active=True,
+            ).select_related("inventory", "product")
+        }
         pricing_lines = []
         for public_id, variant_public_id, quantity in normalized_items:
             product = products.get(public_id)
             if not product or quantity <= 0:
                 return Response({"items": "Invalid product_public_id or quantity."}, status=status.HTTP_400_BAD_REQUEST)
-            try:
-                variant = resolve_storefront_variant(
-                    product=product,
-                    variant_public_id=variant_public_id,
-                )
-            except serializers.ValidationError as exc:
-                return Response(exc.detail, status=status.HTTP_400_BAD_REQUEST)
+            raw_variant_public_id = (variant_public_id or "").strip()
+            has_variants = product_has_active_variants(product)
+            if has_variants:
+                if not raw_variant_public_id:
+                    return Response(
+                        {"error": "Variant selection required for this product"},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                variant = variants_by_public_id.get(raw_variant_public_id)
+                if variant is None or variant.product_id != product.id:
+                    return Response(
+                        {"error": "Invalid or inactive variant for this product."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            else:
+                if raw_variant_public_id:
+                    return Response(
+                        {"error": "This product does not use variants; omit variant_public_id."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                variant = None
             unit_price = unit_price_for_line(product, variant)
             pricing_lines.append(
                 {"product": product, "quantity": quantity, "unit_price": unit_price}

@@ -126,19 +126,18 @@ def get_shipping_options(store, zone_public_id: str, order_total_str: str | None
         if zone is None:
             return []
 
-        methods = list(ShippingMethod.objects.filter(
-            store=store, is_active=True
-        ).order_by("order", "id"))
-        if not methods:
+        candidate_methods = list(
+            ShippingMethod.objects.filter(
+                store=store,
+                is_active=True,
+            )
+            .prefetch_related("zones")
+            .order_by("order", "id")
+        )
+        if not candidate_methods:
             return []
 
-        method_ids = [method.id for method in methods]
-        through_rows = ShippingMethod.zones.through.objects.filter(
-            shippingmethod_id__in=method_ids
-        ).values_list("shippingmethod_id", "shippingzone_id")
-        zone_ids_by_method_id: dict[int, set[int]] = {}
-        for method_id, zone_id in through_rows:
-            zone_ids_by_method_id.setdefault(method_id, set()).add(zone_id)
+        method_ids = [method.id for method in candidate_methods]
 
         rates = list(
             ShippingRate.objects.filter(
@@ -155,8 +154,8 @@ def get_shipping_options(store, zone_public_id: str, order_total_str: str | None
             rates_by_method_id.setdefault(rate.shipping_method_id, []).append(rate)
 
         options = []
-        for method in methods:
-            method_zone_ids = zone_ids_by_method_id.get(method.id, set())
+        for method in candidate_methods:
+            method_zone_ids = {zone_row.id for zone_row in method.zones.all()}
             if method_zone_ids and zone.id not in method_zone_ids:
                 continue
             for rate in rates_by_method_id.get(method.id, []):
