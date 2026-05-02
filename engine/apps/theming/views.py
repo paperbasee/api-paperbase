@@ -13,13 +13,11 @@ from config.permissions import DenyAPIKeyAccess, IsStoreAdmin
 from engine.core.request_context import get_dashboard_store_from_request
 from engine.core.tenant_drf import ProvenTenantContextMixin
 
-from .cache import PRESETS_CACHE_TTL, get_cached_theme, invalidate_theme_cache, set_cached_theme
+from .cache import PRESETS_CACHE_KEY, PRESETS_CACHE_TTL, get_cached_theme, invalidate_theme_cache, set_cached_theme
 from .models import StorefrontTheme
 from .permissions import IsThemeOwner, PresetsViewPermission, ThemeGetPermission
 from .presets import PALETTE_LABELS, PALETTES, PALETTE_CHOICES
 from .serializers import StorefrontThemeSerializer, serialize_theme_payload
-
-PRESETS_CACHE_KEY = "theme:presets"
 
 
 class ThemeView(ProvenTenantContextMixin, RetrieveUpdateAPIView):

@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 THEME_CACHE_TTL = 60 * 60 * 24  # 24 hours
 PRESETS_CACHE_TTL = 60 * 60 * 24
+# Bump when palette keys/labels change so stale entries are not served for 24h.
+PRESETS_CACHE_KEY = "theme:presets:v2"
 
 
 def theme_cache_key(store_public_id: str) -> str:
