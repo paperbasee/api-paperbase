@@ -4,6 +4,9 @@ Single source of truth for storefront color palettes. Do not duplicate elsewhere
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 PALETTES: dict[str, dict[str, str]] = {
     "ivory": {
         "background": "#FAFAF8",
@@ -31,20 +34,20 @@ PALETTES: dict[str, dict[str, str]] = {
         "foreground": "#FFFFFF",
         "primary": "#FFFFFF",
         "primary_foreground": "#000000",
-        "secondary": "#111111",
+        "secondary": "#1C1C1C",
         "secondary_foreground": "#FFFFFF",
-        "muted": "#111111",
-        "muted_foreground": "#888888",
+        "muted": "#1C1C1C",
+        "muted_foreground": "#909090",
         "accent": "#FFFFFF",
         "accent_foreground": "#000000",
-        "card": "#111111",
+        "card": "#141414",
         "card_foreground": "#FFFFFF",
-        "popover": "#111111",
+        "popover": "#141414",
         "popover_foreground": "#FFFFFF",
-        "border": "#222222",
-        "input": "#222222",
+        "border": "#2E2E2E",
+        "input": "#2E2E2E",
         "ring": "#FFFFFF",
-        "header": "#111111",
+        "header": "#0A0A0A",
         "header_foreground": "#FFFFFF",
     },
     "arctic": {
@@ -108,3 +111,16 @@ def resolve_palette(palette_key: str) -> dict[str, str]:
         key = DEFAULT_PALETTE
     raw = PALETTES[key]
     return {k.replace("_", "-"): v for k, v in raw.items()}
+
+
+def get_palette_version() -> str:
+    """
+    Auto-generates an 8-character cache version hash from the full PALETTES dict.
+    Changes automatically whenever any palette key or hex value changes. No manual bumping.
+    """
+    content = json.dumps(PALETTES, sort_keys=True)
+    return hashlib.sha256(content.encode()).hexdigest()[:8]
+
+
+# Auto-generated — never set this manually
+PALETTE_VERSION: str = get_palette_version()

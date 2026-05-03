@@ -6,6 +6,8 @@ from typing import Any
 
 from django.core.cache import cache
 
+from .presets import PALETTE_VERSION
+
 logger = logging.getLogger(__name__)
 
 THEME_CACHE_TTL = 60 * 60 * 24  # 24 hours
@@ -14,8 +16,12 @@ PRESETS_CACHE_TTL = 60 * 60 * 24
 PRESETS_CACHE_KEY = "theme:presets:v2"
 
 
+def get_cache_key(store_public_id: str) -> str:
+    return f"theme:storefront:{store_public_id}:{PALETTE_VERSION}"
+
+
 def theme_cache_key(store_public_id: str) -> str:
-    return f"theme:storefront:{store_public_id}"
+    return get_cache_key(store_public_id)
 
 
 def get_cached_theme(store_public_id: str) -> dict[str, Any] | None:

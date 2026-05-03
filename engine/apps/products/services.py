@@ -456,6 +456,26 @@ def build_storefront_category_tree(store, request):
     return [node(c) for c in by_parent.get(None, [])]
 
 
+def _rollup_admin_category_product_counts(by_parent: dict[int | None, list]) -> None:
+    """
+    Replace each category's annotated `_pc` with direct products plus all descendants.
+
+    Admin tree counts must reflect totals under each node; roots rarely have direct
+    products when inventory lives on child categories.
+    """
+
+    def rollup(cat) -> int:
+        direct = int(getattr(cat, "_pc", 0) or 0)
+        total = direct
+        for ch in by_parent.get(cat.pk, []):
+            total += rollup(ch)
+        cat._pc = total
+        return total
+
+    for root in by_parent.get(None, []):
+        rollup(root)
+
+
 def build_admin_category_tree(store, request):
     """Full category tree for admin dashboard (`tree=1`); includes inactive categories."""
     from django.db.models import Count
@@ -476,6 +496,8 @@ def build_admin_category_tree(store, request):
         by_parent.setdefault(c.parent_id, []).append(c)
     for row in by_parent.values():
         row.sort(key=lambda x: (x.order, x.name))
+
+    _rollup_admin_category_product_counts(by_parent)
 
     def node(c):
         ser = AdminCategorySerializer(
